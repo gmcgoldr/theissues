@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 
+import json
 import time
 from pathlib import Path
+from typing import NamedTuple
 
 import numpy as np
 import sentencepiece as spm
@@ -10,8 +12,21 @@ import torch
 from theissues import training
 from theissues.model import TransformerModel
 
+TRAIN_ARGS = (
+    ("ndims_embed", int, 128),
+    ("ndims_trans", int, 128),
+    ("nlayers", int, 2),
+    ("nheads", int, 2),
+    ("dropout", float, 0.2),
+    ("seq_len", int, 32),
+    ("epoch_size", int, 256),
+    ("batch_size", int, 32),
+    ("grad_clip", float, 0.5),
+    ("max_steps", int, 2 ** 14),
+)
 
-def main(path_tokens: Path, path_tokenizer: Path):
+
+def main(path_tokens: Path, path_tokenizer: Path, **train_args):
     tokenizer = spm.SentencePieceProcessor(model_file=str(path_tokenizer))
 
     with path_tokens.open("rb") as fio:
@@ -21,20 +36,14 @@ def main(path_tokens: Path, path_tokenizer: Path):
 
     device = "cuda" if torch.cuda.is_available() else "cpu"
     nvocab = tokenizer.vocab_size()
-    ndims_embed = 128
-    ndims_trans = 128
-    nlayers = 2
-    nheads = 2
-    dropout = 0.2
-    seq_len = 32
     model = TransformerModel(
         nvocab=nvocab,
-        seq_len=seq_len,
-        ndims_embed=ndims_embed,
-        ndims_trans=ndims_trans,
-        nheads=nheads,
-        nlayers=nlayers,
-        dropout=dropout,
+        seq_len=train_args["seq_len"],
+        ndims_embed=train_args["ndims_embed"],
+        ndims_trans=train_args["ndims_trans"],
+        nheads=train_args["nheads"],
+        nlayers=train_args["nlayers"],
+        dropout=train_args["dropout"],
     )
 
     # Adam is a robust choice while other parts of the algorithm and training
@@ -44,17 +53,16 @@ def main(path_tokens: Path, path_tokenizer: Path):
     train_ctx = training.TrainContext(
         model=model.to(device),
         nvocab=nvocab,
-        seq_len=seq_len,
+        seq_len=train_args["seq_len"],
         device=device,
         tokens=tokens.to(device),
         optimizer=optimizer,
-        epoch_size=256,
-        batch_size=32,
-        grad_clip=0.5,
+        epoch_size=train_args["epoch_size"],
+        batch_size=train_args["batch_size"],
+        grad_clip=train_args["grad_clip"],
     )
 
-    max_steps = 2 ** 14
-    max_epochs = max_steps // train_ctx.epoch_size
+    max_epochs = train_args["max_steps"] // train_ctx.epoch_size
     epoch_digits = int(np.log10(max_epochs)) + 1
     epoch_format = f"{{:{epoch_digits}d}}"
 
@@ -62,7 +70,7 @@ def main(path_tokens: Path, path_tokenizer: Path):
         model=model,
         tokenizer=tokenizer,
         temperature=1e0,
-        max_tokens=seq_len,
+        max_tokens=train_args["seq_len"],
     )
 
     try:
@@ -106,4 +114,8 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("path_tokens", type=Path)
     parser.add_argument("path_tokenizer", type=Path)
+
+    for field, field_type, default_value in TRAIN_ARGS:
+        parser.add_argument(f"--{field}", type=field_type, default=default_value)
+
     main(**vars(parser.parse_args()))
