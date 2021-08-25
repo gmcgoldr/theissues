@@ -26,7 +26,7 @@ def main(path_paragraphs: Path, path_tokenizer: Path, path_tokenized: Path):
             tokens += paragraph
             tokens.append(eos_id)
 
-    tokens = np.array(tokens, dtype="uint64")
+    tokens = np.array(tokens, dtype="int64")
 
     with path_tokenized.open("wb") as fio:
         np.save(fio, tokens)
