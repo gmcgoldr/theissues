@@ -58,6 +58,6 @@ if __name__ == "__main__":
     parser.add_argument("path_paragraphs", type=Path)
     parser.add_argument("path_tokenizer", type=Path)
     parser.add_argument("path_tokenized", type=Path)
-    parser.add_argument("--sampling_num", type=int)
+    parser.add_argument("--sampling_num", type=int, default=0)
     parser.add_argument("--sampling_alpha", type=float, default=0.1)
     main(**vars(parser.parse_args()))
