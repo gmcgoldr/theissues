@@ -117,7 +117,7 @@ class GeneratorContext(NamedTuple):
     max_tokens: int
 
 
-def generate_seq(ctx: GeneratorContext):
+def generate_seq(ctx: GeneratorContext, seed: str = None):
     ctx.model.eval()
 
     try:
@@ -125,14 +125,16 @@ def generate_seq(ctx: GeneratorContext):
     except StopIteration:
         device = "cuda" if torch.nn.cuda.cuda.is_available() else "cpu"
 
-    input = torch.LongTensor(1).to(device)
-    # seed with the "beggining of string" token
-    input[0] = ctx.tokenizer.bos_id()
+    input = [ctx.tokenizer.bos_id()]
+    if seed:
+        input += ctx.tokenizer.encode(seed)
 
-    token_idxs = list()
+    token_idxs = list(input)
+
+    input = torch.LongTensor(input).to(device)
 
     with torch.no_grad():  # no tracking history
-        for _ in range(ctx.max_tokens):
+        while input.size(0) < ctx.max_tokens:
             # add the (single) batch dimension at index 1
             output = ctx.model(input.unsqueeze(1), None)
             # select the prediction from the last token

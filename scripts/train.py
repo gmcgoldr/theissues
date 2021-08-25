@@ -74,6 +74,11 @@ def main(path_tokens: Path, path_tokenizer: Path, **train_args):
         temperature=1e0,
         max_tokens=train_args["seq_len"],
     )
+    generate_seeds = (
+        "on the issue of",
+        "i would like to",
+        "in conclusion,",
+    )
 
     try:
         last_loss = np.nan
@@ -97,17 +102,17 @@ def main(path_tokens: Path, path_tokenizer: Path, **train_args):
 
             if iepoch % 25 == 0:
                 print("Sample sentences:")
-                print("> {}".format(training.generate_seq(generate_ctx)))
-                print("> {}".format(training.generate_seq(generate_ctx)))
-                print("> {}".format(training.generate_seq(generate_ctx)))
+                for seed in generate_seeds:
+                    sequence = training.generate_seq(generate_ctx, seed)
+                    print(f"> {sequence}")
 
     except KeyboardInterrupt:
         pass
 
     print("Sample sentences:")
-    print("> {}".format(training.generate_seq(generate_ctx)))
-    print("> {}".format(training.generate_seq(generate_ctx)))
-    print("> {}".format(training.generate_seq(generate_ctx)))
+    for seed in generate_seeds:
+        sequence = training.generate_seq(generate_ctx, seed)
+        print(f"> {sequence}")
 
 
 if __name__ == "__main__":
