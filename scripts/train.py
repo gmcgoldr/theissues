@@ -104,10 +104,10 @@ def main(path_tokens: Path, path_tokenizer: Path, **train_args):
     except KeyboardInterrupt:
         pass
 
-    print("\nSample sentences:")
-    print("\n{}".format(training.generate_seq(generate_ctx)))
-    print("\n{}".format(training.generate_seq(generate_ctx)))
-    print("\n{}".format(training.generate_seq(generate_ctx)))
+    print("Sample sentences:")
+    print("> {}".format(training.generate_seq(generate_ctx)))
+    print("> {}".format(training.generate_seq(generate_ctx)))
+    print("> {}".format(training.generate_seq(generate_ctx)))
 
 
 if __name__ == "__main__":
