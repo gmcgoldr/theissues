@@ -39,6 +39,8 @@ def build_batch(
         tensor of tokens with shape `(seq_len, batch_size)`
     """
     ntokens = tokens.size(0)
+    if ntokens < 2 * seq_len:
+        raise ValueError("there must be at least `2 * seq_len` tokens")
     offset = rng.choice(seq_len)
     ntokens -= offset
     nbatches = ntokens // seq_len
