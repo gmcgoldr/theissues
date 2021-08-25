@@ -13,6 +13,8 @@ class TrainContext(NamedTuple):
     nvocab: int
     # run the model on sequences of this length
     seq_len: int
+    # make predictions with at least this many tokens as conditionals
+    min_conditional: int
     device: str
     # the full text of tokens from which to create sequences
     tokens: torch.LongTensor
@@ -62,6 +64,9 @@ def train_epoch(ctx: TrainContext) -> float:
     Returns:
         the total loss over the epoch
     """
+    if ctx.min_conditional < 1:
+        raise ValueError("`min_conditional` must be > than zero")
+
     ctx.model.train()
 
     rng = np.random.default_rng()
@@ -86,6 +91,12 @@ def train_epoch(ctx: TrainContext) -> float:
         inputs = batch_data[:-1]
         targets = batch_data[1:]
         output = ctx.model(inputs, src_mask)
+
+        # crop the early words which lack context for making a prediction
+        offset = ctx.min_conditional - 1
+        output = output[offset:]
+        targets = targets[offset:]
+
         loss = torch.nn.functional.cross_entropy(
             output.view(-1, ctx.nvocab), targets.view(-1)
         )
