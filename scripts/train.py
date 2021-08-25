@@ -7,8 +7,8 @@ import numpy as np
 import sentencepiece as spm
 import torch
 
+from theissues import training
 from theissues.model import TransformerModel
-from theissues.training import TrainContext, train_epoch
 
 
 def main(path_tokens: Path, path_tokenizer: Path):
@@ -41,7 +41,7 @@ def main(path_tokens: Path, path_tokenizer: Path):
     # pipeline are changing
     optimizer = torch.optim.Adam(model.parameters())
 
-    train_ctx = TrainContext(
+    train_ctx = training.TrainContext(
         model=model.to(device),
         nvocab=nvocab,
         seq_len=seq_len,
@@ -58,24 +58,46 @@ def main(path_tokens: Path, path_tokenizer: Path):
     epoch_digits = int(np.log10(max_epochs)) + 1
     epoch_format = f"{{:{epoch_digits}d}}"
 
+    generate_ctx = training.GeneratorContext(
+        model=model,
+        tokenizer=tokenizer,
+        temperature=1e0,
+        max_tokens=seq_len,
+    )
+
     try:
         last_loss = np.nan
         for iepoch in range(max_epochs):
             time_start = time.time()
-            total_loss = train_epoch(train_ctx)
+            total_loss = training.train_epoch(train_ctx)
+
             loss = total_loss / train_ctx.epoch_size
+            diff = loss - last_loss
+            last_loss = loss
             time_elapsed = time.time() - time_start
             ms_per_step = time_elapsed * 1e3 / train_ctx.epoch_size
             epoch_str = epoch_format.format(iepoch)
+
             print(
                 f"{epoch_str} / {max_epochs} "
                 f"| ms per step: {ms_per_step:.0f} "
                 f"| loss: {loss:.2e} "
-                f"| diff: {loss - last_loss:+.1e} "
+                f"| diff: {diff:+.1e} "
             )
-            last_loss = loss
+
+            if iepoch % 25 == 0:
+                print("Sample sentences:")
+                print("> {}".format(training.generate_seq(generate_ctx)))
+                print("> {}".format(training.generate_seq(generate_ctx)))
+                print("> {}".format(training.generate_seq(generate_ctx)))
+
     except KeyboardInterrupt:
         pass
+
+    print("\nSample sentences:")
+    print("\n{}".format(training.generate_seq(generate_ctx)))
+    print("\n{}".format(training.generate_seq(generate_ctx)))
+    print("\n{}".format(training.generate_seq(generate_ctx)))
 
 
 if __name__ == "__main__":

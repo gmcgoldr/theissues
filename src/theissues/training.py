@@ -1,6 +1,7 @@
 from typing import NamedTuple
 
 import numpy as np
+import sentencepiece as spm
 import torch
 
 from .model import TransformerModel
@@ -94,3 +95,56 @@ def train_epoch(ctx: TrainContext) -> float:
         ctx.optimizer.step()
 
     return total_loss
+
+
+class GeneratorContext(NamedTuple):
+    model: torch.nn.Module
+    tokenizer: spm.SentencePieceProcessor
+    temperature: float
+    max_tokens: int
+
+
+def generate_seq(ctx: GeneratorContext):
+    ctx.model.eval()
+
+    try:
+        device = next(ctx.model.parameters()).device
+    except StopIteration:
+        device = "cuda" if torch.nn.cuda.cuda.is_available() else "cpu"
+
+    input = torch.LongTensor(1).to(device)
+    # seed with the "beggining of string" token
+    input[0] = ctx.tokenizer.bos_id()
+
+    token_idxs = list()
+
+    with torch.no_grad():  # no tracking history
+        for _ in range(ctx.max_tokens):
+            # add the (single) batch dimension at index 1
+            output = ctx.model(input.unsqueeze(1), None)
+            # select the prediction from the last token
+            output = output[-1]
+            # temperature can squash (expand) the logit values, and the relative
+            # probs. is proportional to the differences, which are all smaller
+            # (larger) so the things are more (less) evenly distributed
+            output = output / ctx.temperature
+            # run through softmax to get probs, but `multinomial` will also take
+            # care of normalization so can just use `exp` here
+            probs = torch.exp(output)
+
+            # draw a single token index from the probs
+            token_idx = torch.multinomial(probs.cpu(), 1)[0].item()
+
+            # add the word to the input
+            input = torch.cat([input, torch.LongTensor([token_idx]).to(device)])
+
+            # when "end of string" is emitted, break early
+            if token_idx == ctx.tokenizer.eos_id():
+                break
+
+            token_idxs.append(token_idx)
+
+    if token_idxs:
+        return ctx.tokenizer.decode(token_idxs)
+    else:
+        return ""
