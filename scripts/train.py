@@ -62,7 +62,7 @@ def main(path_tokens: Path, path_tokenizer: Path, **train_args):
         grad_clip=train_args["grad_clip"],
     )
 
-    max_epochs = train_args["max_steps"] // train_ctx.epoch_size
+    max_epochs = max(1, train_args["max_steps"] // train_ctx.epoch_size)
     epoch_digits = int(np.log10(max_epochs)) + 1
     epoch_format = f"{{:{epoch_digits}d}}"
 
