@@ -1,28 +1,28 @@
 #!/usr/bin/env python3
 
+"""
+Build the binary tokenized data for training from the statements.
+
+Creates a file `statements.npy` which is a dense array of packed statements
+in the form `<src><src_val><bos>...<eos>` where `...` is a sequence of tokens.
+This is encoded into vocabulary entries.
+"""
+
+import json
 import warnings
 from pathlib import Path
-from typing import Iterable, List
+from typing import List
 
 import numpy as np
 import sentencepiece as spm
 
 
-def build_paragraph_entry(
+def build_entry(
     tokens: List[int], src_val_id: int, bos_id: int, eos_id: int, src_id: int
 ) -> List[int]:
     tokens = [src_id, src_val_id, bos_id] + tokens
     tokens.append(eos_id)
     return tokens
-
-
-def is_iterator_done(iterable: Iterable) -> bool:
-    # NOTE: consumes a value
-    try:
-        next(iterable)
-    except StopIteration:
-        return True
-    return False
 
 
 def main(
@@ -49,24 +49,18 @@ def main(
 
     tokens = []
 
-    with (dir_data / "paragraphs.txt").open("r") as fio_pars, (
-        dir_data / "paragraph_sources.txt"
-    ).open("r") as fio_srcs:
-        for paragraph, source in zip(fio_pars, fio_srcs):
-            paragraph = paragraph.strip()
-            source = source.strip()
-
-            # in case of trailing empty line, but otherwise the paragraphs
-            # should be normalized (stripped)
-            if not paragraph:
+    with (dir_data / "statements.jsonl").open("r") as fio:
+        for statement in fio:
+            if not statement.strip():
                 continue
+            source, sequence = json.loads(statement)
 
-            paragraph_tokens = tokenizer.encode(paragraph)
+            paragraph_tokens = tokenizer.encode(sequence)
             src_val_id = tokenizer.piece_to_id(source)
             if src_val_id == unk_id:
                 warnings.warn(f"unknown source: {source}")
 
-            tokens += build_paragraph_entry(
+            tokens += build_entry(
                 tokens=paragraph_tokens,
                 src_val_id=src_val_id,
                 bos_id=bos_id,
@@ -75,7 +69,7 @@ def main(
             )
 
             for _ in range(sampling_num):
-                tokens += build_paragraph_entry(
+                tokens += build_entry(
                     tokens=paragraph_tokens,
                     src_val_id=src_val_id,
                     bos_id=bos_id,
@@ -83,13 +77,9 @@ def main(
                     src_id=src_id,
                 )
 
-        # TODO: better to store as a jsonl?
-        if not is_iterator_done(fio_pars) or not is_iterator_done(fio_srcs):
-            raise RuntimeError("inconsistent number of sources and paragraphs")
-
     tokens = np.array(tokens, dtype="int64")
 
-    with (dir_data / "paragraphs.npy").open("wb") as fio:
+    with (dir_data / "statements.npy").open("wb") as fio:
         np.save(fio, tokens)
 
 

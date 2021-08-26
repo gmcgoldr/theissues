@@ -24,3 +24,10 @@ To build the data from scratch:
 scripts/download-db.sh
 scripts/build-hansards.sh
 ```
+
+## Training
+
+```bash
+python3 scripts/build-tokenizer.py data/ data/model/ spm-tok
+python3 scripts/tokenize-statements.py data/ data/model/spm-tok.model
+```

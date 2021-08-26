@@ -1,10 +1,19 @@
 #!/usr/bin/env python3
 
+"""
+Build the tokenizer and pre-process the data into "statements" which are ready
+for tokenization.
+
+Pre-procssing involves normalizing text and mapping statements sources to their
+vocabulary token.
+"""
+
 import json
 import re
 import unicodedata
 import warnings
 import xml.etree.ElementTree as ET
+from itertools import repeat
 from pathlib import Path
 from typing import List
 
@@ -85,19 +94,15 @@ def main(
     ]
 
     paragraphs = []
-    sources = []
+    statements = []
 
     for i, (text_src, text) in enumerate(texts):
         try:
             text_paragraphs = build_paragraphs(text)
             paragraphs += text_paragraphs
-            sources += [text_src] * len(text_paragraphs)
+            statements += list(zip(repeat(text_src), text_paragraphs))
         except ET.ParseError as e:
             warnings.warn(f"invalid XML in record {i}: {e}")
-
-    # TODO: might want to move functions into a module and test
-    # TODO: should verify the sources follow have a single `_` and no new lines
-    assert len(sources) == len(paragraphs)
 
     paragraph_chars = list(map(len, paragraphs))
     low_chars, median_chars, high_chars = np.percentile(paragraph_chars, (5, 50, 95))
@@ -107,12 +112,13 @@ def main(
         f"{median_chars:.0f} < "
         f"{high_chars:.0f}"
     )
-    print(f"Number of sources: {len(set(sources))}")
+    sources = list(sorted(set([s for s, _ in statements])))
+    print(f"Number of sources: {len(sources)}")
 
     with (path_data / "paragraphs.txt").open("w") as fio:
         fio.write("\n".join(paragraphs))
-    with (path_data / "paragraph_sources.txt").open("w") as fio:
-        fio.write("\n".join(sources))
+    with (path_data / "statements.jsonl").open("w") as fio:
+        fio.write("\n".join(map(json.dumps, statements)))
 
     # list of source tokens and the `<src>` seperator so that each sequence
     # can be annodated with a source

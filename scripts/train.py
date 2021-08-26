@@ -43,7 +43,7 @@ def save_model(
 
 
 def main(
-    path_tokens: Path,
+    path_statements: Path,
     path_tokenizer: Path,
     dir_model: Path,
     model_name: str,
@@ -65,7 +65,7 @@ def main(
 
     tokenizer = spm.SentencePieceProcessor(model_file=str(path_tokenizer))
 
-    with path_tokens.open("rb") as fio:
+    with path_statements.open("rb") as fio:
         tokens = np.load(fio)
 
     tokens = torch.from_numpy(tokens).type(torch.LongTensor)
@@ -160,7 +160,7 @@ if __name__ == "__main__":
     import argparse
 
     parser = argparse.ArgumentParser()
-    parser.add_argument("path_tokens", type=Path)
+    parser.add_argument("path_statements", type=Path)
     parser.add_argument("path_tokenizer", type=Path)
     parser.add_argument("dir_model", type=Path)
     parser.add_argument("model_name", type=str)
