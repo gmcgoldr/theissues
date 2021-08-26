@@ -4,9 +4,11 @@ import numpy as np
 import sentencepiece as spm
 import torch
 
+from .model import TransformerModel
+
 
 class TrainContext(NamedTuple):
-    model: torch.nn.Module
+    model: TransformerModel
     # number of tokens in the vocabulary
     nvocab: int
     # run the model on sequences of this length
@@ -21,40 +23,73 @@ class TrainContext(NamedTuple):
     epoch_size: int
     # include this many sequences in a batch
     batch_size: int
+    # batches can start at these indices in the `tokens`
+    batch_indices: torch.LongTensor
     grad_clip: float
 
 
-def build_batch(
-    rng: np.random.BitGenerator, tokens: torch.LongTensor, seq_len: int, batch_size: int
+def build_batch_split_indices(
+    tokens: torch.LongTensor, split_token_id: int
 ) -> torch.LongTensor:
     """
-    Build a batch of sequences of tokens from a larger sequence of tokens.
+    Build an array with the indices in the `tokens` array of all tokens which
+    match the `split_token_id`.
+    """
+    mask = tokens == split_token_id
+    indices = torch.arange(tokens.size(0), dtype=torch.long)[mask]
+    return indices
+
+
+def build_batch_indices(
+    rng: np.random.Generator,
+    tokens: torch.LongTensor,
+    split_idxs: torch.LongTensor,
+    seq_len: int,
+    batch_size: int,
+) -> torch.LongTensor:
+    """
+    Build a tensor of token indices from which to build a batch of sequences.
 
     Args:
-        tokens: the full text from which to draw sequences
-        seq_len: the number of tokens in a drawn sequence
-        batch_size: aggregate this many sequences
+        rng: a random number generator used to select sequence locations
+        tokens: the full tensor of tokens from which to build sequences
+        split_idxs: indices in the `tokens` tensor where batches can start
+        seq_len: build sequences with this many tokens
+        batch_size: build a batch with this many sequences
 
     Returns:
-        tensor of tokens with shape `(seq_len, batch_size)`
+        tensor of token indices in the `tokens` array from which to form a
+        batch with shape `(seq_len, batch_size)`
     """
-    ntokens = tokens.size(0)
-    if ntokens < 2 * seq_len:
-        raise ValueError("there must be at least `2 * seq_len` tokens")
-    offset = rng.choice(seq_len)
-    ntokens -= offset
-    nbatches = ntokens // seq_len
-    batch_data = tokens[offset:]
-    batch_data = (
-        batch_data[: nbatches * seq_len].view((nbatches, seq_len)).transpose(0, 1)
-    )
-    indices = rng.choice(nbatches, batch_size)
-    return batch_data[:, indices]
+    indices = torch.arange(seq_len, dtype=torch.long)
+    splits = rng.choice(split_idxs, batch_size)
+    indices = indices[None, :] + splits[:, None]
+    # if starting a sequence too close to the end of the data, will wrap around
+    # and keep using the start as the next sequence
+    indices = indices % tokens.size(0)
+    indices = indices.transpose(0, 1)
+    return indices
 
 
 def train_epoch(ctx: TrainContext) -> float:
     """
     Train the model over one epoch using the provided configuration.
+
+    Sequences have the form:
+
+    `<src> src <bos> tok1 ...`
+
+    Where `<src>` and `<bos>` are special tokens, `tok1 ...` is the
+    sequence of vocabulary tokens to train from, and `src` is the sequence
+    source token.
+
+    `seq_len` includes the special tokens, so to predict a single vocabulary
+    token (i.e. `tok1`) `seq_len` must be at least `4`. In this case the model
+    will emit probabilites `P(tok1 | <src> src <bos>)`.
+
+    Setting `min_conditional` will increase the number of context tokens in
+    the conditional, e.g. predicting `tok2 ...` from `tok1 ...` for
+    `min_conditional = 1`.
 
     Args:
         ctx: the training configuration
@@ -62,8 +97,10 @@ def train_epoch(ctx: TrainContext) -> float:
     Returns:
         the total loss over the epoch
     """
-    if ctx.min_conditional < 1:
-        raise ValueError("`min_conditional` must be > than zero")
+    if ctx.seq_len < 4:
+        raise ValueError("`seq_len` must be >= 4")
+    if 3 + ctx.min_conditional >= ctx.seq_len:
+        raise ValueError("`min_conditional` must be < `seq_len - 3`")
 
     ctx.model.train()
 
@@ -77,25 +114,31 @@ def train_epoch(ctx: TrainContext) -> float:
     # the full dataset.
 
     for _ in range(ctx.epoch_size):
-        # sequence length needs +1 due to target being off by 1
-        batch_data = build_batch(
+        batch_indices = build_batch_indices(
             rng=rng,
             tokens=ctx.tokens,
-            seq_len=ctx.seq_len + 1,
+            split_idxs=ctx.batch_indices,
+            seq_len=ctx.seq_len,
             batch_size=ctx.batch_size,
         )
+
+        batch_data = ctx.tokens[batch_indices]
 
         inputs = batch_data[:-1]
         targets = batch_data[1:]
         output = ctx.model(inputs)
 
-        # crop the early words which lack context for making a prediction
-        offset = ctx.min_conditional - 1
+        # the first loss term is predicting `tok1` from `<bos>`, and shifts
+        # forward when `min_conditional > 0`.
+        offset = 2 + ctx.min_conditional
         output = output[offset:]
         targets = targets[offset:]
 
         loss = torch.nn.functional.cross_entropy(
-            output.view(-1, ctx.nvocab), targets.view(-1)
+            # NOTE: reshape because `batch_data` isn't contiguous, setting
+            # contiguous upstream has no appreciable effect on performance
+            output.reshape(-1, ctx.nvocab),
+            targets.reshape(-1),
         )
         total_loss += loss.item()
 
@@ -114,7 +157,7 @@ class GeneratorContext(NamedTuple):
     max_tokens: int
 
 
-def generate_seq(ctx: GeneratorContext, seed: str = None):
+def generate_seq(ctx: GeneratorContext, seed: str = None, source: str = None):
     ctx.model.eval()
 
     try:
@@ -122,11 +165,23 @@ def generate_seq(ctx: GeneratorContext, seed: str = None):
     except StopIteration:
         device = "cuda" if torch.nn.cuda.cuda.is_available() else "cpu"
 
-    input = [ctx.tokenizer.bos_id()]
+    src_id = ctx.tokenizer.piece_to_id("<src>")
+    bos_id = ctx.tokenizer.bos_id()
+    unk_id = ctx.tokenizer.unk_id()
+
+    if unk_id in {src_id, bos_id}:
+        raise RuntimeError("tokenizer must have <s> and <src> tokens")
+
+    input = [
+        src_id,
+        ctx.tokenizer.piece_to_id(source) if source else unk_id,
+        bos_id,
+    ]
     if seed:
         input += ctx.tokenizer.encode(seed)
 
-    token_idxs = list(input)
+    # the tokens to show start after <bos>
+    token_idxs = list(input[3:])
 
     input = torch.LongTensor(input).to(device)
 

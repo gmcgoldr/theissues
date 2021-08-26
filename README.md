@@ -30,4 +30,5 @@ scripts/build-hansards.sh
 ```bash
 python3 scripts/build-tokenizer.py data/ data/model/ spm-tok
 python3 scripts/tokenize-statements.py data/ data/model/spm-tok.model
+python3 scripts/train.py data/statements.npy data/model/spm-tok.model data/model/ lm
 ```

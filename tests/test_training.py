@@ -1,32 +1,42 @@
 import numpy as np
-import pytest
 import torch
 
 from theissues import training
 
 
-def test_build_batch_offsets_and_batches():
-    rng = np.random.Generator(np.random.PCG64(1234))
-    tokens = torch.arange(8)
-    # offsets to index 2 and chooses the 2nd batch twice
-    batch = training.build_batch(rng=rng, tokens=tokens, seq_len=3, batch_size=2)
-    np.testing.assert_equal(batch.tolist(), [[5, 5], [6, 6], [7, 7]])
-    # offsets to index 1 and chooses 1st then 2nd batch
-    batch = training.build_batch(rng=rng, tokens=tokens, seq_len=3, batch_size=2)
-    np.testing.assert_equal(batch.tolist(), [[1, 4], [2, 5], [3, 6]])
-    # offsets to index 0 and chooses 1st batch twice
-    batch = training.build_batch(rng=rng, tokens=tokens, seq_len=3, batch_size=2)
-    np.testing.assert_equal(batch.tolist(), [[0, 0], [1, 1], [2, 2]])
-    # offsets to index 0 and chooses 2nd then 1st batch
-    batch = training.build_batch(rng=rng, tokens=tokens, seq_len=3, batch_size=2)
-    np.testing.assert_equal(batch.tolist(), [[3, 0], [4, 1], [5, 2]])
+def test_build_batch_split_indices_returns_indices():
+    tokens = torch.LongTensor([1, 2, 3, 1, 2])
+    indices = training.build_batch_split_indices(tokens, 2)
+    np.testing.assert_equal(indices.tolist(), [1, 4])
 
 
-def test_build_batch_rasise_for_invalid_seq_len():
-    rng = np.random.Generator(np.random.PCG64(1234))
+def test_build_batch_split_indices_handles_out_of_range():
+    tokens = torch.LongTensor([1, 2, 3, 1, 2])
+    indices = training.build_batch_split_indices(tokens, 4)
+    np.testing.assert_equal(indices.tolist(), [])
+
+
+def test_build_batch_indices_returns_contiguous_sequences_at_split():
+    rng = np.random.Generator(np.random.PCG64(123))
     tokens = torch.arange(8)
-    # at the limit
-    training.build_batch(rng=rng, tokens=tokens, seq_len=4, batch_size=2)
-    # above the limit
-    with pytest.raises(ValueError):
-        training.build_batch(rng=rng, tokens=tokens, seq_len=5, batch_size=2)
+    split_idxs = torch.LongTensor([1])
+    indices = training.build_batch_indices(rng, tokens, split_idxs, 3, 2)
+    # can select only sequences starting at `1`, so it will return both
+    # sequences there, of length 3 (note seq along dim 0)
+    np.testing.assert_equal(indices.tolist(), [[1, 1], [2, 2], [3, 3]])
+
+
+def test_build_batch_indices_returns_in_bounds_with_wraparound():
+    rng = np.random.Generator(np.random.PCG64(123))
+    tokens = torch.arange(8)
+    split_idxs = torch.LongTensor([7])
+    indices = training.build_batch_indices(rng, tokens, split_idxs, 3, 2)
+    np.testing.assert_equal(indices.tolist(), [[7, 7], [0, 0], [1, 1]])
+
+
+def test_build_batch_indices_returns_in_bounds_with_wraparound():
+    rng = np.random.Generator(np.random.PCG64(123))
+    tokens = torch.arange(8)
+    split_idxs = torch.LongTensor([1, 2])
+    indices = training.build_batch_indices(rng, tokens, split_idxs, 3, 2)
+    np.testing.assert_equal(indices.tolist(), [[1, 2], [2, 3], [3, 4]])

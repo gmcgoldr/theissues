@@ -89,7 +89,8 @@ def main(
     # Adam is a robust choice while other parts of the algorithm and training
     # pipeline are changing
     optimizer = torch.optim.Adam(model.parameters())
-
+    split_token_id = tokenizer.piece_to_id("<src>")
+    split_inidces = training.build_batch_split_indices(tokens, split_token_id)
     train_ctx = training.TrainContext(
         model=model.to(device),
         nvocab=nvocab,
@@ -100,6 +101,7 @@ def main(
         optimizer=optimizer,
         epoch_size=train_args.epoch_size,
         batch_size=train_args.batch_size,
+        batch_indices=split_inidces,
         grad_clip=train_args.grad_clip,
     )
 
@@ -113,10 +115,10 @@ def main(
         temperature=1e0,
         max_tokens=train_args.seq_len,
     )
-    generate_seeds = (
-        "on the issue of",
-        "i would like to",
-        "in conclusion,",
+    generate_seed_source = (
+        (None, "<pol_567>"),  # Trudeau
+        (None, "<pol_9243>"),  # O'Toole
+        (None, "<pol_10636>"),  # Singh
     )
 
     # do an initial save to ensure there are no issues with serialization
@@ -137,23 +139,23 @@ def main(
 
             logging.info(
                 f"{epoch_str} / {max_epochs} "
-                f"| ms per step: {ms_per_step:.0f} "
+                f"| ms per step: {ms_per_step:3.0f} "
                 f"| loss: {loss:.2e} "
                 f"| diff: {diff:+.1e} "
             )
 
             if iepoch % 25 == 0:
                 logging.info("Sample sentences:")
-                for seed in generate_seeds:
-                    sequence = training.generate_seq(generate_ctx, seed)
+                for seed, source in generate_seed_source:
+                    sequence = training.generate_seq(generate_ctx, seed, source)
                     logging.info(f"> {sequence}")
 
     except KeyboardInterrupt:
         pass
 
     logging.info("Sample sentences:")
-    for seed in generate_seeds:
-        sequence = training.generate_seq(generate_ctx, seed)
+    for seed in generate_seed_source:
+        sequence = training.generate_seq(generate_ctx, seed, source)
         logging.info(f"> {sequence}")
 
     # save the final model
