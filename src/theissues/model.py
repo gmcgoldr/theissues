@@ -96,6 +96,11 @@ class TransformerModel(torch.nn.Module):
         self.decoder = torch.nn.Linear(ndims_embed, nvocab)
         self.dropout = torch.nn.Dropout(dropout)
 
+        # store the attention mask with the model
+        self.register_buffer(
+            name="attention_mask", tensor=self.build_subsequent_mask(seq_len)
+        )
+
         self.init_weights()
 
     @staticmethod
@@ -107,6 +112,13 @@ class TransformerModel(torch.nn.Module):
         With `n` set to a sequence length, this creates a mask which can be
         used to progressively allow each token in the sequence to propagate
         to the output.
+
+        The entries add a weight to the attention of token `i` to `j`. The
+        upper (past diagonal) entries have `-inf` attention weight for token `i`
+        attending token `j > i`. Which is what is desired as token `i` will
+        emit a prediction for token `j = i + 1`. In BERT-style training, only
+        `i + 1` needs be masked, but to build an auto-regressive model capable
+        of generating text, causality must be respected.
         """
         return torch.triu(torch.ones(n, n) * -math.inf, diagonal=1)
 
@@ -115,17 +127,19 @@ class TransformerModel(torch.nn.Module):
         torch.nn.init.zeros_(self.decoder.weight)
         torch.nn.init.uniform_(self.decoder.weight, -scale, scale)
 
-    def forward(
-        self, x: torch.LongTensor, src_mask: torch.FloatTensor
-    ) -> torch.FloatTensor:
+    def forward(self, x: torch.LongTensor) -> torch.FloatTensor:
         # convert the token indieces to the embedding space, with positional
         # encodings and dropout applied
         x = self.embeddings(x) * math.sqrt(self.ndims_embed)
         x = self.positional_encoder(x)
         x = self.dropout(x)
 
+        # shorten the mask if run on smaller sequences
+        n = x.size(0)
+        attention_mask = self.attention_mask[:n, :n]
+
         # run through the transformer into the output feature space
-        x = self.transformer_encoder(x, src_mask)
+        x = self.transformer_encoder(x, attention_mask)
         # decode the features into token weights
         x = self.decoder(x)
 

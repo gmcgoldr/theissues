@@ -4,8 +4,6 @@ import numpy as np
 import sentencepiece as spm
 import torch
 
-from .model import TransformerModel
-
 
 class TrainContext(NamedTuple):
     model: torch.nn.Module
@@ -70,7 +68,6 @@ def train_epoch(ctx: TrainContext) -> float:
     ctx.model.train()
 
     rng = np.random.default_rng()
-    src_mask = TransformerModel.build_subsequent_mask(ctx.seq_len).to(ctx.device)
 
     total_loss = 0.0
 
@@ -90,7 +87,7 @@ def train_epoch(ctx: TrainContext) -> float:
 
         inputs = batch_data[:-1]
         targets = batch_data[1:]
-        output = ctx.model(inputs, src_mask)
+        output = ctx.model(inputs)
 
         # crop the early words which lack context for making a prediction
         offset = ctx.min_conditional - 1
@@ -136,7 +133,7 @@ def generate_seq(ctx: GeneratorContext, seed: str = None):
     with torch.no_grad():  # no tracking history
         while input.size(0) < ctx.max_tokens:
             # add the (single) batch dimension at index 1
-            output = ctx.model(input.unsqueeze(1), None)
+            output = ctx.model(input.unsqueeze(1))
             # select the prediction from the last token
             output = output[-1]
             # temperature can squash (expand) the logit values, and the relative

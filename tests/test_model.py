@@ -66,7 +66,7 @@ def test_transformer_model_outputs_weights_over_vocab():
     )
     # 8 tokens, 3 sequences in the batch
     x = torch.arange(8 * 3, dtype=torch.long).view((8, 3))
-    out = m(x, torch.ones((8, 8), dtype=torch.float))
+    out = m(x)
     out = out.detach()
     # prob. over 32 vocab tokens, for 3 sequencs, for each of the 8 input tokens
     # with the other dimensions having been collected in the transformer
