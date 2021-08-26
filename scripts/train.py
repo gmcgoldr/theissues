@@ -58,6 +58,9 @@ def main(
 
     logging_handlers = [logging.StreamHandler(sys.stdout)]
     if path_log is not None:
+        # clear the log file
+        with path_log.open("w"):
+            pass
         logging_handlers.append(logging.FileHandler(path_log))
     logging.basicConfig(
         level=logging.INFO,
