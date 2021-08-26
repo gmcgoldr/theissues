@@ -157,7 +157,7 @@ def main(
         pass
 
     logging.info("Sample sentences:")
-    for seed in generate_seed_source:
+    for seed, source in generate_seed_source:
         sequence = training.generate_seq(generate_ctx, seed, source)
         logging.info(f"> {sequence}")
 
