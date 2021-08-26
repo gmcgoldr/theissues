@@ -53,12 +53,16 @@ def main(
     train_args = TrainArgs(**train_args)
 
     dir_model.parent.mkdir(parents=True, exist_ok=True)
-    path_log.parent.mkdir(parents=True, exist_ok=True)
+    if path_log is not None:
+        path_log.parent.mkdir(parents=True, exist_ok=True)
 
+    logging_handlers = [logging.StreamHandler(sys.stdout)]
+    if path_log is not None:
+        logging_handlers.append(logging.FileHandler(path_log))
     logging.basicConfig(
         level=logging.INFO,
         format="%(message)s",
-        handlers=[logging.FileHandler(path_log), logging.StreamHandler(sys.stdout)],
+        handlers=logging_handlers,
     )
 
     logging.info(json.dumps(train_args._asdict(), indent="\t"))
