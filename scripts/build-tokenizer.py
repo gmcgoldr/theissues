@@ -76,14 +76,28 @@ def main(
     with (path_data / "hansards.jsonl").open("r") as fio:
         records = [json.loads(l) for l in fio if l.strip()]
 
-    texts = [r["content_en"] for r in records]
+    texts = [
+        (
+            "<pol_{}>".format(r["politician_id"]),
+            r["content_en"],
+        )
+        for r in records
+    ]
 
     paragraphs = []
-    for i, text in enumerate(texts):
+    sources = []
+
+    for i, (text_src, text) in enumerate(texts):
         try:
-            paragraphs += build_paragraphs(text)
+            text_paragraphs = build_paragraphs(text)
+            paragraphs += text_paragraphs
+            sources += [text_src] * len(text_paragraphs)
         except ET.ParseError as e:
             warnings.warn(f"invalid XML in record {i}: {e}")
+
+    # TODO: might want to move functions into a module and test
+    # TODO: should verify the sources follow have a single `_` and no new lines
+    assert len(sources) == len(paragraphs)
 
     paragraph_chars = list(map(len, paragraphs))
     low_chars, median_chars, high_chars = np.percentile(paragraph_chars, (5, 50, 95))
@@ -93,9 +107,18 @@ def main(
         f"{median_chars:.0f} < "
         f"{high_chars:.0f}"
     )
+    print(f"Number of sources: {len(set(sources))}")
 
     with (path_data / "paragraphs.txt").open("w") as fio:
         fio.write("\n".join(paragraphs))
+    with (path_data / "paragraph_sources.txt").open("w") as fio:
+        fio.write("\n".join(sources))
+
+    # list of source tokens and the `<src>` seperator so that each sequence
+    # can be annodated with a source
+    source_tokens = list(sorted(set(sources)))
+    source_tokens.insert(0, "<src>")
+    source_tokens = ",".join(source_tokens)
 
     print("Training model...")
     dir_model.mkdir(parents=True, exist_ok=True)
@@ -105,6 +128,7 @@ def main(
         model_type="UNIGRAM",
         vocab_size=vocab_size,
         character_coverage=0.9995,
+        control_symbols=source_tokens,
         max_sentence_length=max_sentence_chars,
         # NOTE: large tokens can capture entire platitudes
         max_sentencepiece_length=max_token_chars,
