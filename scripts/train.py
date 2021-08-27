@@ -39,7 +39,15 @@ def save_model(
         dummy_input = torch.zeros((context.seq_len, 1), dtype=torch.long).to(
             context.device
         )
-        torch.onnx.export(context.model, dummy_input, fio, opset_version=10)
+        torch.onnx.export(
+            model=context.model,
+            args=dummy_input,
+            f=fio,
+            opset_version=10,
+            input_names=["input"],
+            output_names=["output"],
+            do_constant_folding=True,
+        )
 
 
 def main(
