@@ -20,6 +20,7 @@ class TrainArgs(NamedTuple):
     nlayers: int = 4
     nheads: int = 4
     dropout: float = 0.0
+    tied_weights: bool = False
     seq_len: int = 128
     min_conditional: int = 0
     epoch_size: int = 256
@@ -86,6 +87,7 @@ def main(
         nheads=train_args.nheads,
         nlayers=train_args.nlayers,
         dropout=train_args.dropout,
+        tied=train_args.tied_weights,
     )
 
     # Adam is a robust choice while other parts of the algorithm and training
@@ -175,10 +177,20 @@ if __name__ == "__main__":
     parser.add_argument("--path_log", type=Path)
 
     for field in TrainArgs._fields:
-        parser.add_argument(
-            f"--{field}",
-            type=TrainArgs._field_types[field],
-            default=TrainArgs._field_defaults[field],
-        )
+        field_type = TrainArgs._field_types[field]
+        default_value = TrainArgs._field_defaults[field]
+        if field_type == bool:
+            if default_value:
+                raise ValueError("cannot handle on-by-default bool")
+            parser.add_argument(
+                f"--{field}",
+                action="store_true",
+            )
+        else:
+            parser.add_argument(
+                f"--{field}",
+                type=field_type,
+                default=default_value,
+            )
 
     main(**vars(parser.parse_args()))

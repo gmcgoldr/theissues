@@ -63,6 +63,27 @@ def test_transformer_model_outputs_weights_over_vocab():
         nheads=2,
         nlayers=5,
         dropout=0,
+        tied=False,
+    )
+    # 8 tokens, 3 sequences in the batch
+    x = torch.arange(8 * 3, dtype=torch.long).view((8, 3))
+    out = m(x)
+    out = out.detach()
+    # prob. over 32 vocab tokens, for 3 sequencs, for each of the 8 input tokens
+    # with the other dimensions having been collected in the transformer
+    assert out.shape == (8, 3, 32)
+
+
+def test_transformer_model_outputs_weights_over_vocab_when_tied():
+    m = model.TransformerModel(
+        nvocab=32,
+        seq_len=8,
+        ndims_embed=4,
+        ndims_forward=6,
+        nheads=2,
+        nlayers=5,
+        dropout=0,
+        tied=True,
     )
     # 8 tokens, 3 sequences in the batch
     x = torch.arange(8 * 3, dtype=torch.long).view((8, 3))

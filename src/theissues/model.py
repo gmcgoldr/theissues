@@ -65,6 +65,7 @@ class TransformerModel(torch.nn.Module):
         nheads: int,
         nlayers: int,
         dropout: float,
+        tied: bool,
     ):
         """
         Args:
@@ -76,6 +77,8 @@ class TransformerModel(torch.nn.Module):
                 feed forward layer
             nheads: number of attention heads
             nlayers: number of transfomer layers
+            dropout: the dropout rate
+            tied: use the embeddings as the decoder matrix if `True`
         """
         super().__init__()
 
@@ -101,6 +104,8 @@ class TransformerModel(torch.nn.Module):
         self.register_buffer(
             name="attention_mask", tensor=self.build_subsequent_mask(seq_len)
         )
+
+        self.tied = tied
 
         self.init_weights()
 
@@ -142,7 +147,10 @@ class TransformerModel(torch.nn.Module):
         # run through the transformer into the output feature space
         x = self.transformer_encoder(x, attention_mask)
         # decode the features into token weights
-        x = self.decoder(x)
+        if self.tied:
+            x = torch.nn.functional.linear(x, self.embeddings.weight, self.decoder.bias)
+        else:
+            x = self.decoder(x)
 
         # NOTE: `x` is now appropriate for `CrossEntropyLoss`, but to get the
         # token probabilities, `Softmax` must be applied.
