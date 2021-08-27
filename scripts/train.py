@@ -16,13 +16,12 @@ from theissues.model import TransformerModel
 
 
 class TrainArgs(NamedTuple):
-    ndims_embed: int = 256
-    ndims_trans: int = 128
+    ndims: int = 256
     nlayers: int = 4
     nheads: int = 4
-    dropout: float = 0.1
+    dropout: float = 0.0
     seq_len: int = 128
-    min_conditional: int = 3
+    min_conditional: int = 0
     epoch_size: int = 256
     batch_size: int = 32
     grad_clip: float = 0.5
@@ -82,8 +81,8 @@ def main(
     model = TransformerModel(
         nvocab=nvocab,
         seq_len=train_args.seq_len,
-        ndims_embed=train_args.ndims_embed,
-        ndims_trans=train_args.ndims_trans,
+        ndims_embed=train_args.ndims,
+        ndims_forward=train_args.ndims,
         nheads=train_args.nheads,
         nlayers=train_args.nlayers,
         dropout=train_args.dropout,
@@ -147,7 +146,7 @@ def main(
                 f"| diff: {diff:+.1e} "
             )
 
-            if iepoch % 25 == 0:
+            if iepoch % 24 == 0:
                 logging.info("Sample sentences:")
                 for seed, source in generate_seed_source:
                     sequence = training.generate_seq(generate_ctx, seed, source)

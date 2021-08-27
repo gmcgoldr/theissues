@@ -59,7 +59,7 @@ def test_transformer_model_outputs_weights_over_vocab():
         nvocab=32,
         seq_len=8,
         ndims_embed=4,
-        ndims_trans=6,
+        ndims_forward=6,
         nheads=2,
         nlayers=5,
         dropout=0,

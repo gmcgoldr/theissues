@@ -61,7 +61,7 @@ class TransformerModel(torch.nn.Module):
         nvocab: int,
         seq_len: int,
         ndims_embed: int,
-        ndims_trans: int,
+        ndims_forward: int,
         nheads: int,
         nlayers: int,
         dropout: float,
@@ -72,7 +72,8 @@ class TransformerModel(torch.nn.Module):
             seq_len: number of tokens in a sequence
             ndims_embed: number of hidden dimensions in the embedding (and all
                 token respresentations)
-            ndims_trans: number of hidden dimensions in the transformer
+            ndims_forward: number of hidden dimensions in the transformer
+                feed forward layer
             nheads: number of attention heads
             nlayers: number of transfomer layers
         """
@@ -87,7 +88,7 @@ class TransformerModel(torch.nn.Module):
             encoder_layer=torch.nn.TransformerEncoderLayer(
                 d_model=ndims_embed,
                 nhead=nheads,
-                dim_feedforward=ndims_trans,
+                dim_feedforward=ndims_forward,
                 dropout=dropout,
             ),
             num_layers=nlayers,
