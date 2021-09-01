@@ -11,12 +11,10 @@ import sentencepiece as spm
 import torch
 
 from theissues import training
-from theissues.model import TransformerModel, TrainArgs
+from theissues.model import TrainArgs, TransformerModel
 
 
-def save_model(
-    dir_model: Path, args: TrainArgs, context: training.TrainContext
-):
+def save_model(dir_model: Path, args: TrainArgs, context: training.TrainContext):
     torch.save(context.model.state_dict(), (dir_model / f"state.pt"))
     with (dir_model / f"args.json").open("w") as fio:
         json.dump(args._asdict(), fio, indent="\t")
@@ -108,9 +106,12 @@ def main(
     generate_ctx = training.GeneratorContext(
         model=model,
         tokenizer=tokenizer,
-        temperature=1e0,
+        temperature=1.0,
+        temperature_decay=0.8,
+        temperature_decay_scale=8,
         max_tokens=train_args.seq_len,
     )
+
     generate_seed_source = (
         (None, "<pol_567>"),  # Trudeau
         (None, "<pol_9243>"),  # O'Toole

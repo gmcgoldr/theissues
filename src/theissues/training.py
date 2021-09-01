@@ -1,3 +1,4 @@
+import math
 from typing import NamedTuple
 
 import numpy as np
@@ -170,6 +171,8 @@ class GeneratorContext(NamedTuple):
     model: torch.nn.Module
     tokenizer: spm.SentencePieceProcessor
     temperature: float
+    temperature_decay: float
+    temperature_decay_scale: int
     max_tokens: int
 
 
@@ -200,23 +203,60 @@ def generate_seq(ctx: GeneratorContext, seed: str = None, source: str = None):
     token_idxs = list(input[3:])
 
     input = torch.LongTensor(input).to(device)
+    num_generated_tokens = 0
+
+    unk_idx = ctx.tokenizer.piece_to_id("<unk>")
+    bos_idx = ctx.tokenizer.piece_to_id("<s>")
+    eos_idx = ctx.tokenizer.piece_to_id("</s>")
+    if eos_idx == unk_idx or bos_idx == unk_idx:
+        raise RuntimeError("cannot find BOS or EOS in vocab")
+
+    char_pairs = (
+        ("“", "”"),
+        ("(", ")"),
+        ("[", "]"),
+    )
+
+    excluded_tokens = {unk_idx}
+    for idx in range(ctx.tokenizer.vocab_size()):
+        if ctx.tokenizer.is_control(idx):
+            excluded_tokens.add(idx)
+            continue
+        token = ctx.tokenizer.id_to_piece(idx)
+
+        for copen, cclose in char_pairs:
+            num_open = token.count(copen)
+            num_close = token.count(cclose)
+            if num_open != num_close:
+                excluded_tokens.add(idx)
+                break
+
+    excluded_tokens.discard(eos_idx)
+    excluded_tokens = torch.LongTensor(list(sorted(excluded_tokens)))
 
     with torch.no_grad():  # no tracking history
         while input.size(0) < ctx.max_tokens:
+            temperature_progress = min(
+                1.0, num_generated_tokens / ctx.temperature_decay_scale
+            )
+            temperature_decay = math.log(ctx.temperature_decay)
+            temperature = ctx.temperature * math.exp(
+                temperature_progress * temperature_decay
+            )
+
             # add the (single) batch dimension at index 1
             output = ctx.model(input.unsqueeze(1))
-            # select the prediction from the last token
-            output = output[-1]
+            # select the prediction from the last token, and remove batch dim
+            output = output[-1, 0]
+            output[excluded_tokens] = -np.inf
             # temperature can squash (expand) the logit values, and the relative
             # probs. is proportional to the differences, which are all smaller
             # (larger) so the things are more (less) evenly distributed
-            output = output / ctx.temperature
-            # run through softmax to get probs, but `multinomial` will also take
-            # care of normalization so can just use `exp` here
-            probs = torch.exp(output)
+            output = output / temperature
+            probs = torch.softmax(output, dim=-1)
 
             # draw a single token index from the probs
-            token_idx = torch.multinomial(probs.cpu(), 1)[0].item()
+            token_idx = torch.multinomial(probs.cpu(), 2)[0].item()
 
             # add the word to the input
             input = torch.cat([input, torch.LongTensor([token_idx]).to(device)])
@@ -226,6 +266,7 @@ def generate_seq(ctx: GeneratorContext, seed: str = None, source: str = None):
                 break
 
             token_idxs.append(token_idx)
+            num_generated_tokens += 1
 
     if token_idxs:
         return ctx.tokenizer.decode(token_idxs)
