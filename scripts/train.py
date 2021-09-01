@@ -7,7 +7,7 @@ import time
 from pathlib import Path
 
 import numpy as np
-import sentencepiece as spm
+import tokenizers as tk
 import torch
 
 from theissues import training
@@ -60,7 +60,7 @@ def main(
 
     logging.info(json.dumps(train_args._asdict(), indent="\t"))
 
-    tokenizer = spm.SentencePieceProcessor(model_file=str(path_tokenizer))
+    tokenizer = tk.Tokenizer.from_file(str(path_tokenizer))
 
     with path_statements.open("rb") as fio:
         tokens = np.load(fio)
@@ -68,7 +68,7 @@ def main(
     tokens = torch.from_numpy(tokens).type(torch.LongTensor)
 
     device = "cuda" if torch.cuda.is_available() else "cpu"
-    nvocab = tokenizer.vocab_size()
+    nvocab = tokenizer.get_vocab_size()
     model = TransformerModel(
         nvocab=nvocab,
         seq_len=train_args.seq_len,
@@ -83,7 +83,7 @@ def main(
     # Adam is a robust choice while other parts of the algorithm and training
     # pipeline are changing
     optimizer = torch.optim.Adam(model.parameters())
-    split_token_id = tokenizer.piece_to_id("<src>")
+    split_token_id = tokenizer.token_to_id("[SRC]")
     split_inidces = training.build_batch_split_indices(tokens, split_token_id)
     train_ctx = training.TrainContext(
         model=model.to(device),
@@ -113,9 +113,9 @@ def main(
     )
 
     generate_seed_source = (
-        (None, "<pol_567>"),  # Trudeau
-        (None, "<pol_9243>"),  # O'Toole
-        (None, "<pol_10636>"),  # Singh
+        (None, "[POL_567]"),  # Trudeau
+        (None, "[POL_9243]"),  # O'Toole
+        (None, "[POL_10636]"),  # Singh
     )
 
     try:

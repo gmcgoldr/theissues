@@ -2,7 +2,7 @@ import math
 from typing import NamedTuple
 
 import numpy as np
-import sentencepiece as spm
+import tokenizers as tk
 import torch
 
 from .model import TransformerModel
@@ -169,7 +169,7 @@ def train_epoch(ctx: TrainContext) -> TrainOutput:
 
 class GeneratorContext(NamedTuple):
     model: torch.nn.Module
-    tokenizer: spm.SentencePieceProcessor
+    tokenizer: tk.Tokenizer
     temperature: float
     temperature_decay: float
     temperature_decay_scale: int
@@ -184,54 +184,53 @@ def generate_seq(ctx: GeneratorContext, seed: str = None, source: str = None):
     except StopIteration:
         device = "cuda" if torch.nn.cuda.cuda.is_available() else "cpu"
 
-    src_id = ctx.tokenizer.piece_to_id("<src>")
-    bos_id = ctx.tokenizer.bos_id()
-    unk_id = ctx.tokenizer.unk_id()
+    unk_id = ctx.tokenizer.token_to_id("[UNK]")
+    src_id = ctx.tokenizer.token_to_id("[SRC]")
+    bos_id = ctx.tokenizer.token_to_id("[BOS]")
+    eos_id = ctx.tokenizer.token_to_id("[EOS]")
 
-    if unk_id in {src_id, bos_id}:
-        raise RuntimeError("tokenizer must have <s> and <src> tokens")
+    if None in {unk_id, src_id, bos_id}:
+        raise RuntimeError("tokenizer must have [UNK], [BOS], [EOS] and [SRC] tokens")
+
+    src_token_id = ctx.tokenizer.token_to_id(source) if source else None
+    if src_token_id is None:
+        src_token_id = unk_id
 
     input = [
         src_id,
-        ctx.tokenizer.piece_to_id(source) if source else unk_id,
+        src_token_id,
         bos_id,
     ]
     if seed:
         input += ctx.tokenizer.encode(seed)
 
     # the tokens to show start after <bos>
-    token_idxs = list(input[3:])
+    token_ids = list(input)  # list(input[3:])
 
     input = torch.LongTensor(input).to(device)
     num_generated_tokens = 0
 
-    unk_idx = ctx.tokenizer.piece_to_id("<unk>")
-    bos_idx = ctx.tokenizer.piece_to_id("<s>")
-    eos_idx = ctx.tokenizer.piece_to_id("</s>")
-    if eos_idx == unk_idx or bos_idx == unk_idx:
-        raise RuntimeError("cannot find BOS or EOS in vocab")
-
     char_pairs = (
         ("“", "”"),
         ("(", ")"),
-        ("[", "]"),
     )
 
-    excluded_tokens = {unk_idx}
-    for idx in range(ctx.tokenizer.vocab_size()):
-        if ctx.tokenizer.is_control(idx):
+    excluded_tokens = {unk_id}
+    for idx in range(ctx.tokenizer.get_vocab_size()):
+        token = ctx.tokenizer.id_to_token(idx)
+        # only special tokens start with [
+        if token.startswith("["):
             excluded_tokens.add(idx)
             continue
-        token = ctx.tokenizer.id_to_piece(idx)
 
-        for copen, cclose in char_pairs:
-            num_open = token.count(copen)
-            num_close = token.count(cclose)
+        for o, c in char_pairs:
+            num_open = token.count(o)
+            num_close = token.count(c)
             if num_open != num_close:
                 excluded_tokens.add(idx)
                 break
 
-    excluded_tokens.discard(eos_idx)
+    excluded_tokens.discard(eos_id)
     excluded_tokens = torch.LongTensor(list(sorted(excluded_tokens)))
 
     with torch.no_grad():  # no tracking history
@@ -261,14 +260,14 @@ def generate_seq(ctx: GeneratorContext, seed: str = None, source: str = None):
             # add the word to the input
             input = torch.cat([input, torch.LongTensor([token_idx]).to(device)])
 
-            # when "end of string" is emitted, break early
-            if token_idx == ctx.tokenizer.eos_id():
-                break
-
-            token_idxs.append(token_idx)
+            token_ids.append(token_idx)
             num_generated_tokens += 1
 
-    if token_idxs:
-        return ctx.tokenizer.decode(token_idxs)
+            # when "end of string" is emitted, break early
+            if token_idx == eos_id:
+                break
+
+    if token_ids:
+        return ctx.tokenizer.decode(token_ids, skip_special_tokens=False)
     else:
         return ""

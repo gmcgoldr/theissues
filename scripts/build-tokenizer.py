@@ -10,6 +10,7 @@ vocabulary token.
 
 import json
 import re
+import tempfile
 import unicodedata
 import warnings
 import xml.etree.ElementTree as ET
@@ -18,7 +19,7 @@ from pathlib import Path
 from typing import List
 
 import numpy as np
-import sentencepiece as spm
+import tokenizers as tk
 
 
 def normalize_text(text: str) -> str:
@@ -35,6 +36,9 @@ def normalize_text(text: str) -> str:
     # character is not used in the corpus which is convenient for making line
     # deliminted data
     text = re.sub(r"\s+", " ", text.strip())
+    # reserve the square braces for special tokens
+    text = text.replace("[", "(")
+    text = text.replace("]", ")")
     # remove leading and trailing white space
     text = text.strip()
     return text
@@ -73,21 +77,21 @@ def build_paragraphs(text: str) -> List[str]:
 
 
 def main(
-    path_data: Path,
-    model_name: str,
-    dir_model: Path,
+    path_in: Path,
+    path_statements: Path,
+    path_tokenizer: Path,
     vocab_size: int,
-    max_sentence_chars: int,
-    max_token_chars: int,
-    split_spaces: bool,
 ):
+    path_statements.parent.mkdir(parents=True, exist_ok=True)
+    path_tokenizer.parent.mkdir(parents=True, exist_ok=True)
+
     print("Parsing hansards...")
-    with (path_data / "hansards.jsonl").open("r") as fio:
+    with path_in.open("r") as fio:
         records = [json.loads(l) for l in fio if l.strip()]
 
     texts = [
         (
-            "<pol_{}>".format(r["politician_id"]),
+            "[POL_{}]".format(r["politician_id"]),
             r["content_en"],
         )
         for r in records
@@ -104,6 +108,10 @@ def main(
         except ET.ParseError as e:
             warnings.warn(f"invalid XML in record {i}: {e}")
 
+    with path_statements.open("w") as fio:
+        fio.write("\n".join(map(json.dumps, statements)))
+
+    print("Calculating statistics...")
     paragraph_chars = list(map(len, paragraphs))
     low_chars, median_chars, high_chars = np.percentile(paragraph_chars, (5, 50, 95))
     print(
@@ -112,63 +120,34 @@ def main(
         f"{median_chars:.0f} < "
         f"{high_chars:.0f}"
     )
-    sources = list(sorted(set([s for s, _ in statements])))
-    print(f"Number of sources: {len(sources)}")
+    source_tokens = list(sorted(set([s for s, _ in statements])))
+    print(f"Number of sources: {len(source_tokens)}")
 
-    with (path_data / "paragraphs.txt").open("w") as fio:
+    special_tokens = ["[UNK]", "[BOS]", "[EOS]", "[SRC]"] + source_tokens
+    if len(special_tokens) >= vocab_size:
+        raise RuntimeError("vocab size must exceed number of special tokens")
+
+    with tempfile.NamedTemporaryFile(mode="w") as fio:
         fio.write("\n".join(paragraphs))
-    with (path_data / "statements.jsonl").open("w") as fio:
-        fio.write("\n".join(map(json.dumps, statements)))
 
-    # list of source tokens and the `<src>` seperator so that each sequence
-    # can be annodated with a source
-    source_tokens = list(sorted(set(sources)))
-    source_tokens.insert(0, "<src>")
-    source_tokens = ",".join(source_tokens)
+        print("Training...")
+        tokenizer = tk.Tokenizer(tk.models.WordPiece(unk_token="[UNK]"))
+        trainer = tk.trainers.WordPieceTrainer(
+            vocab_size=vocab_size, special_tokens=special_tokens
+        )
+        tokenizer.pre_tokenizer = tk.pre_tokenizers.Whitespace()
+        tokenizer.train([fio.name], trainer)
+        tokenizer.save(str(path_tokenizer), pretty=True)
 
-    print("Training model...")
-    dir_model.mkdir(parents=True, exist_ok=True)
-    spm.SentencePieceTrainer.train(
-        input=str(path_data / "paragraphs.txt"),
-        model_prefix=str(dir_model / model_name),
-        model_type="UNIGRAM",
-        vocab_size=vocab_size,
-        character_coverage=0.9995,
-        control_symbols=source_tokens,
-        max_sentence_length=max_sentence_chars,
-        # NOTE: large tokens can capture entire platitudes
-        max_sentencepiece_length=max_token_chars,
-        # NOTE: non-whitespace delimited tokens are much more domain-specific
-        # without much draw-back given SPM's sub-word sampling option
-        split_by_whitespace=split_spaces,
-        # NOTE: might be some domain-specific words that contain digits
-        split_by_unicode_script=False,
-    )
-
-    with (dir_model / model_name).with_suffix(".vocab").open("r") as fio:
-        vocab = [l.split("\t")[0] for l in fio if l.strip()]
-
-    vocab_chars = list(map(len, vocab))
-    vocab_sorted = reversed(sorted(zip(vocab_chars, vocab)))
-
-    print("Longest tokens")
-    for i in range(10):
-        try:
-            _, token = next(vocab_sorted)
-        except StopIteration:
-            break
-        print(f"  {token}")
+    print(f"Vocab size: {tokenizer.get_vocab_size()}")
 
 
 if __name__ == "__main__":
     import argparse
 
     parser = argparse.ArgumentParser()
-    parser.add_argument("path_data", type=Path)
-    parser.add_argument("dir_model", type=Path)
-    parser.add_argument("model_name", type=str)
-    parser.add_argument("--vocab_size", type=int, default=2 ** 15)
-    parser.add_argument("--max_sentence_chars", type=int, default=2 ** 10)
-    parser.add_argument("--max_token_chars", type=int, default=2 ** 8)
-    parser.add_argument("--split_spaces", action="store_true")
+    parser.add_argument("path_in", type=Path)
+    parser.add_argument("path_statements", type=Path)
+    parser.add_argument("path_tokenizer", type=Path)
+    parser.add_argument("--vocab_size", type=int, default=2 ** 12)
     main(**vars(parser.parse_args()))

@@ -10,76 +10,90 @@ This is encoded into vocabulary entries.
 
 import json
 import warnings
+from collections import defaultdict
 from pathlib import Path
 from typing import List
 
 import numpy as np
-import sentencepiece as spm
+import tokenizers as tk
 
 
 def build_entry(
-    tokens: List[int], src_val_id: int, bos_id: int, eos_id: int, src_id: int
+    token_ids: List[int], src_val_id: int, bos_id: int, eos_id: int, src_id: int
 ) -> List[int]:
-    tokens = [src_id, src_val_id, bos_id] + tokens
-    tokens.append(eos_id)
-    return tokens
+    token_ids = [src_id, src_val_id, bos_id] + token_ids
+    token_ids.append(eos_id)
+    return token_ids
 
 
 def main(
     path_in: Path,
     path_out: Path,
     path_tokenizer: Path,
-    sampling_num: int,
-    sampling_alpha: float,
 ):
-    if sampling_alpha is not None and not (0.0 <= sampling_alpha <= 1.0):
-        raise ValueError("`sampling_alpha` must be in the range `[0.0, 1.0]`")
-    if sampling_num and sampling_alpha is None:
-        raise ValueError("`sampling_alpha` must be provided")
+    path_out.parent.mkdir(parents=True, exist_ok=True)
 
-    tokenizer = spm.SentencePieceProcessor(model_file=str(path_tokenizer))
-    unk_id = tokenizer.unk_id()
-    bos_id = tokenizer.bos_id()
-    eos_id = tokenizer.eos_id()
-    src_id = tokenizer.piece_to_id("<src>")
+    tokenizer = tk.Tokenizer.from_file(str(path_tokenizer))
+    bos_id = tokenizer.token_to_id("[BOS]")
+    eos_id = tokenizer.token_to_id("[EOS]")
+    src_id = tokenizer.token_to_id("[SRC]")
 
-    if unk_id in {bos_id, eos_id, src_id}:
-        raise ValueError("tokenizer must contain: <s>, </s>, <src>")
+    if None in {bos_id, eos_id, src_id}:
+        raise ValueError("tokenizer must contain: [BOS], [EOS], [SRC]")
 
-    tokens = []
-
+    statements = []
     with path_in.open("r") as fio:
         for statement in fio:
             if not statement.strip():
                 continue
             source, sequence = json.loads(statement)
+            statements.append((source, sequence))
 
-            paragraph_tokens = tokenizer.encode(sequence)
-            src_val_id = tokenizer.piece_to_id(source)
-            if src_val_id == unk_id:
+    print("Tokenizing sequences...")
+    sequences = [s for _, s in statements]
+    tokenized_sequences = tokenizer.encode_batch(sequences)
+
+    print("Counting tokens...")
+    counts = defaultdict(int)
+    norm = 0
+    for sequence in tokenized_sequences:
+        for token in sequence.tokens:
+            counts[token] += 1
+        norm += 1
+
+    counts = list(sorted([(c, t) for t, c in counts.items()]))
+    print(f"Unique tokens: {len(counts)}")
+
+    print("Min frequecy:")
+    for count, token in counts[:10]:
+        print(f"  {token}: {count} ({count / norm * 100:.2f}%)")
+
+    print("Max frequecy:")
+    for count, token in counts[-10:]:
+        print(f"  {token}: {count} ({count / norm * 100:.2f}%)")
+
+    print("Concatenating...")
+    assert len(statements) == len(tokenized_sequences)
+    statements = [(s, t.ids) for (s, _), t in zip(statements, tokenized_sequences)]
+
+    concatenated = []
+    with path_in.open("r") as fio:
+        for source, token_ids in statements:
+            src_val_id = tokenizer.token_to_id(source)
+            if src_val_id is None:
                 warnings.warn(f"unknown source: {source}")
-
-            tokens += build_entry(
-                tokens=paragraph_tokens,
+            concatenated += build_entry(
+                token_ids=token_ids,
                 src_val_id=src_val_id,
                 bos_id=bos_id,
                 eos_id=eos_id,
                 src_id=src_id,
             )
 
-            for _ in range(sampling_num):
-                tokens += build_entry(
-                    tokens=paragraph_tokens,
-                    src_val_id=src_val_id,
-                    bos_id=bos_id,
-                    eos_id=eos_id,
-                    src_id=src_id,
-                )
-
-    tokens = np.array(tokens, dtype="int64")
-
+    concatenated = np.array(concatenated, dtype="int64")
+    print(tokenizer.decode(concatenated[:32], skip_special_tokens=False))
     with path_out.open("wb") as fio:
-        np.save(fio, tokens)
+        np.save(fio, concatenated)
 
 
 if __name__ == "__main__":
@@ -89,6 +103,4 @@ if __name__ == "__main__":
     parser.add_argument("path_in", type=Path)
     parser.add_argument("path_out", type=Path)
     parser.add_argument("path_tokenizer", type=Path)
-    parser.add_argument("--sampling_num", type=int, default=0)
-    parser.add_argument("--sampling_alpha", type=float, default=0.1)
     main(**vars(parser.parse_args()))

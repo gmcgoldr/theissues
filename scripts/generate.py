@@ -3,7 +3,7 @@
 import json
 from pathlib import Path
 
-import sentencepiece as spm
+import tokenizers as tk
 import torch
 
 from theissues import training
@@ -14,12 +14,12 @@ def main(
     path_tokenizer: Path,
     dir_model: Path,
 ):
-    tokenizer = spm.SentencePieceProcessor(model_file=str(path_tokenizer))
+    tokenizer = tk.Tokenizer.from_file(str(path_tokenizer))
 
     with (dir_model / "args.json").open("r") as fio:
         train_args = TrainArgs(**json.load(fio))
 
-    nvocab = tokenizer.vocab_size()
+    nvocab = tokenizer.get_vocab_size()
     model = TransformerModel(
         nvocab=nvocab,
         seq_len=train_args.seq_len,
@@ -44,9 +44,9 @@ def main(
     )
 
     generate_seed_source = (
-        (None, "<pol_567>"),  # Trudeau
-        (None, "<pol_9243>"),  # O'Toole
-        (None, "<pol_10636>"),  # Singh
+        (None, "[POL_567]"),  # Trudeau
+        (None, "[POL_9243]"),  # O'Toole
+        (None, "[POL_10636]"),  # Singh
     )
 
     for seed, source in generate_seed_source:
