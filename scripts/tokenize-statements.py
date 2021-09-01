@@ -26,7 +26,8 @@ def build_entry(
 
 
 def main(
-    dir_data: Path,
+    path_in: Path,
+    path_out: Path,
     path_tokenizer: Path,
     sampling_num: int,
     sampling_alpha: float,
@@ -35,8 +36,6 @@ def main(
         raise ValueError("`sampling_alpha` must be in the range `[0.0, 1.0]`")
     if sampling_num and sampling_alpha is None:
         raise ValueError("`sampling_alpha` must be provided")
-
-    dir_data.mkdir(parents=True, exist_ok=True)
 
     tokenizer = spm.SentencePieceProcessor(model_file=str(path_tokenizer))
     unk_id = tokenizer.unk_id()
@@ -49,7 +48,7 @@ def main(
 
     tokens = []
 
-    with (dir_data / "statements.jsonl").open("r") as fio:
+    with path_in.open("r") as fio:
         for statement in fio:
             if not statement.strip():
                 continue
@@ -79,7 +78,7 @@ def main(
 
     tokens = np.array(tokens, dtype="int64")
 
-    with (dir_data / "statements.npy").open("wb") as fio:
+    with path_out.open("wb") as fio:
         np.save(fio, tokens)
 
 
@@ -87,7 +86,8 @@ if __name__ == "__main__":
     import argparse
 
     parser = argparse.ArgumentParser()
-    parser.add_argument("dir_data", type=Path)
+    parser.add_argument("path_in", type=Path)
+    parser.add_argument("path_out", type=Path)
     parser.add_argument("path_tokenizer", type=Path)
     parser.add_argument("--sampling_num", type=int, default=0)
     parser.add_argument("--sampling_alpha", type=float, default=0.1)
