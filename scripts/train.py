@@ -5,37 +5,22 @@ import logging
 import sys
 import time
 from pathlib import Path
-from typing import NamedTuple
 
 import numpy as np
 import sentencepiece as spm
 import torch
 
 from theissues import training
-from theissues.model import TransformerModel
-
-
-class TrainArgs(NamedTuple):
-    ndims: int = 256
-    nlayers: int = 4
-    nheads: int = 4
-    dropout: float = 0.0
-    tied_weights: bool = False
-    seq_len: int = 128
-    min_conditional: int = 0
-    batches_per_epoch: int = 256
-    batch_size: int = 32
-    grad_clip: float = 0.5
-    max_examples: int = 2 ** 20
+from theissues.model import TransformerModel, TrainArgs
 
 
 def save_model(
-    dir_model: Path, name: str, args: TrainArgs, context: training.TrainContext
+    dir_model: Path, args: TrainArgs, context: training.TrainContext
 ):
-    torch.save(context.model.state_dict(), (dir_model / f"{name}.pt"))
-    with (dir_model / f"{name}.json").open("w") as fio:
+    torch.save(context.model.state_dict(), (dir_model / f"state.pt"))
+    with (dir_model / f"args.json").open("w") as fio:
         json.dump(args._asdict(), fio, indent="\t")
-    with (dir_model / f"{name}.onnx").open("wb") as fio:
+    with (dir_model / f"model.onnx").open("wb") as fio:
         dummy_input = torch.zeros((context.seq_len, 1), dtype=torch.long).to(
             context.device
         )
@@ -54,13 +39,12 @@ def main(
     path_statements: Path,
     path_tokenizer: Path,
     dir_model: Path,
-    model_name: str,
     path_log: Path,
     **train_args,
 ):
     train_args = TrainArgs(**train_args)
 
-    dir_model.parent.mkdir(parents=True, exist_ok=True)
+    dir_model.mkdir(parents=True, exist_ok=True)
     if path_log is not None:
         path_log.parent.mkdir(parents=True, exist_ok=True)
 
@@ -161,7 +145,6 @@ def main(
                 # save periodically
                 save_model(
                     dir_model=dir_model,
-                    name=model_name,
                     args=train_args,
                     context=train_ctx,
                 )
@@ -175,34 +158,27 @@ def main(
         logging.info(f"> {sequence}")
 
     # save the final model
-    save_model(dir_model=dir_model, name=model_name, args=train_args, context=train_ctx)
+    save_model(dir_model=dir_model, args=train_args, context=train_ctx)
 
 
 if __name__ == "__main__":
     import argparse
+    from distutils.util import strtobool
 
     parser = argparse.ArgumentParser()
     parser.add_argument("path_statements", type=Path)
     parser.add_argument("path_tokenizer", type=Path)
     parser.add_argument("dir_model", type=Path)
-    parser.add_argument("model_name", type=str)
     parser.add_argument("--path_log", type=Path)
 
     for field in TrainArgs._fields:
         field_type = TrainArgs._field_types[field]
+        field_type = field_type if field_type != bool else strtobool
         default_value = TrainArgs._field_defaults[field]
-        if field_type == bool:
-            if default_value:
-                raise ValueError("cannot handle on-by-default bool")
-            parser.add_argument(
-                f"--{field}",
-                action="store_true",
-            )
-        else:
-            parser.add_argument(
-                f"--{field}",
-                type=field_type,
-                default=default_value,
-            )
+        parser.add_argument(
+            f"--{field}",
+            type=field_type,
+            default=default_value,
+        )
 
     main(**vars(parser.parse_args()))

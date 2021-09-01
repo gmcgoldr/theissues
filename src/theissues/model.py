@@ -5,8 +5,23 @@ See: https://pytorch.org/tutorials/beginner/transformer_tutorial.html.
 """
 
 import math
+from typing import NamedTuple
 
 import torch
+
+
+class TrainArgs(NamedTuple):
+    ndims: int = 256
+    nlayers: int = 4
+    nheads: int = 4
+    dropout: float = 0.0
+    tied_weights: bool = False
+    seq_len: int = 128
+    min_conditional: int = 0
+    batches_per_epoch: int = 256
+    batch_size: int = 32
+    grad_clip: float = 0.5
+    max_examples: int = 2 ** 20
 
 
 class PositionalEncoding(torch.nn.Module):
