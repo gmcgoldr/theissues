@@ -71,7 +71,13 @@ def build_batch_indices(
     return indices
 
 
-def train_epoch(ctx: TrainContext) -> float:
+class TrainOutput(NamedTuple):
+    sum_loss: float
+    num_examples: int
+    num_batches: int
+
+
+def train_epoch(ctx: TrainContext) -> TrainOutput:
     """
     Train the model over one epoch using the provided configuration.
 
@@ -95,7 +101,7 @@ def train_epoch(ctx: TrainContext) -> float:
         ctx: the training configuration
 
     Returns:
-        the total loss over the epoch
+        the epoch loss and number of batches
     """
     if ctx.seq_len < 4:
         raise ValueError("`seq_len` must be >= 4")
@@ -106,14 +112,15 @@ def train_epoch(ctx: TrainContext) -> float:
 
     rng = np.random.default_rng()
 
-    total_loss = 0.0
+    sum_loss = 0.0
 
     # NOTE: an epoch is normally a full run over the data, but here it's used
-    # to mean some fixed number of gradient steps which means reporting, saving
-    # early stoping etc. is related to the amount of training, but exposure to
-    # the full dataset.
+    # to mean some fixed number of training example.
 
-    for _ in range(ctx.epoch_size):
+    num_batches = max(1, ctx.epoch_size // ctx.batch_size)
+    num_examples = 0
+
+    for _ in range(num_batches):
         batch_indices = build_batch_indices(
             rng=rng,
             tokens=ctx.tokens,
@@ -140,14 +147,23 @@ def train_epoch(ctx: TrainContext) -> float:
             output.reshape(-1, ctx.nvocab),
             targets.reshape(-1),
         )
-        total_loss += loss.item()
+
+        # count each loss term
+        num_examples += targets.numel()
+        # aggregate to total loss so it can be averaged correctly even if
+        # there are batches of different sizes
+        sum_loss += loss.item() * targets.numel()
 
         ctx.optimizer.zero_grad()
         loss.backward()
         torch.nn.utils.clip_grad_norm_(ctx.model.parameters(), ctx.grad_clip)
         ctx.optimizer.step()
 
-    return total_loss
+    return TrainOutput(
+        sum_loss=sum_loss,
+        num_batches=num_batches,
+        num_examples=num_examples,
+    )
 
 
 class GeneratorContext(NamedTuple):

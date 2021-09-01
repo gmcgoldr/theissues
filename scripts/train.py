@@ -23,10 +23,10 @@ class TrainArgs(NamedTuple):
     tied_weights: bool = False
     seq_len: int = 128
     min_conditional: int = 0
-    epoch_size: int = 256
+    batches_per_epoch: int = 256
     batch_size: int = 32
     grad_clip: float = 0.5
-    max_steps: int = 2 ** 14
+    max_examples: int = 2 ** 20
 
 
 def save_model(
@@ -111,13 +111,13 @@ def main(
         device=device,
         tokens=tokens.to(device),
         optimizer=optimizer,
-        epoch_size=train_args.epoch_size,
+        epoch_size=train_args.batches_per_epoch * train_args.batch_size,
         batch_size=train_args.batch_size,
         batch_indices=split_inidces,
         grad_clip=train_args.grad_clip,
     )
 
-    max_epochs = max(1, train_args.max_steps // train_ctx.epoch_size)
+    max_epochs = max(1, train_args.max_examples // train_ctx.epoch_size)
     epoch_digits = int(np.log10(max_epochs)) + 1
     epoch_format = f"{{:{epoch_digits}d}}"
 
@@ -133,25 +133,22 @@ def main(
         (None, "<pol_10636>"),  # Singh
     )
 
-    # do an initial save to ensure there are no issues with serialization
-    save_model(dir_model=dir_model, name=model_name, args=train_args, context=train_ctx)
-
     try:
         last_loss = np.nan
         for iepoch in range(max_epochs):
             time_start = time.time()
-            total_loss = training.train_epoch(train_ctx)
+            train_output = training.train_epoch(train_ctx)
 
-            loss = total_loss / train_ctx.epoch_size
+            loss = train_output.sum_loss / train_output.num_examples
             diff = loss - last_loss
             last_loss = loss
             time_elapsed = time.time() - time_start
-            ms_per_step = time_elapsed * 1e3 / train_ctx.epoch_size
+            ns_per_example = time_elapsed * 1e6 / train_output.num_examples
             epoch_str = epoch_format.format(iepoch)
 
             logging.info(
                 f"{epoch_str} / {max_epochs} "
-                f"| ms per step: {ms_per_step:3.0f} "
+                f"| ns: {ns_per_example:3.0f} "
                 f"| loss: {loss:.2e} "
                 f"| diff: {diff:+.1e} "
             )
@@ -161,6 +158,13 @@ def main(
                 for seed, source in generate_seed_source:
                     sequence = training.generate_seq(generate_ctx, seed, source)
                     logging.info(f"> {sequence}")
+                # save periodically
+                save_model(
+                    dir_model=dir_model,
+                    name=model_name,
+                    args=train_args,
+                    context=train_ctx,
+                )
 
     except KeyboardInterrupt:
         pass
