@@ -11,7 +11,6 @@ vocabulary token.
 import json
 import re
 import tempfile
-import unicodedata
 import warnings
 import xml.etree.ElementTree as ET
 from itertools import repeat
@@ -21,27 +20,7 @@ from typing import List
 import numpy as np
 import tokenizers as tk
 
-
-def normalize_text(text: str) -> str:
-    """
-    Normalize text to get a connonical respresentation suitable for searching.
-    """
-    # lower-case model because user input will have varying levels of
-    # case correctness
-    text = text.lower()
-    # decompose unicode to reduce the alphabet considered during tokenization,
-    # and drop the compatibility character representations
-    text = unicodedata.normalize("NFKD", text)
-    # use only single space as white space, this also means the new line
-    # character is not used in the corpus which is convenient for making line
-    # deliminted data
-    text = re.sub(r"\s+", " ", text.strip())
-    # reserve the square braces for special tokens
-    text = text.replace("[", "(")
-    text = text.replace("]", ")")
-    # remove leading and trailing white space
-    text = text.strip()
-    return text
+from theissues import utils
 
 
 def build_paragraphs(text: str) -> List[str]:
@@ -68,7 +47,7 @@ def build_paragraphs(text: str) -> List[str]:
             continue
         # get the string with no HTML markup (links and spans tend to be used)
         paragraph = "".join(child.itertext())
-        paragraph = normalize_text(paragraph)
+        paragraph = utils.normalize_text(paragraph)
         if not paragraph:
             continue
         paragraphs.append(paragraph)
@@ -123,7 +102,13 @@ def main(
     source_tokens = list(sorted(set([s for s, _ in statements])))
     print(f"Number of sources: {len(source_tokens)}")
 
-    special_tokens = ["[UNK]", "[BOS]", "[EOS]", "[SRC]"] + source_tokens
+    special_tokens = [
+        utils.SpecialTokens.unk_token,
+        utils.SpecialTokens.bos_token,
+        utils.SpecialTokens.eos_token,
+        utils.SpecialTokens.src_token,
+    ]
+    special_tokens += source_tokens
     if len(special_tokens) >= vocab_size:
         raise RuntimeError("vocab size must exceed number of special tokens")
 
@@ -149,5 +134,5 @@ if __name__ == "__main__":
     parser.add_argument("path_in", type=Path)
     parser.add_argument("path_statements", type=Path)
     parser.add_argument("path_tokenizer", type=Path)
-    parser.add_argument("--vocab_size", type=int, default=2 ** 12)
+    parser.add_argument("--vocab_size", type=int, default=2 ** 13)
     main(**vars(parser.parse_args()))

@@ -6,6 +6,7 @@ import tokenizers as tk
 import torch
 
 from .model import TransformerModel
+from .utils import SpecialTokens
 
 
 class TrainContext(NamedTuple):
@@ -170,6 +171,7 @@ def train_epoch(ctx: TrainContext) -> TrainOutput:
 class GeneratorContext(NamedTuple):
     model: torch.nn.Module
     tokenizer: tk.Tokenizer
+    special_tokens: SpecialTokens
     temperature: float
     temperature_decay: float
     temperature_decay_scale: int
@@ -184,22 +186,14 @@ def generate_seq(ctx: GeneratorContext, seed: str = None, source: str = None):
     except StopIteration:
         device = "cuda" if torch.nn.cuda.cuda.is_available() else "cpu"
 
-    unk_id = ctx.tokenizer.token_to_id("[UNK]")
-    src_id = ctx.tokenizer.token_to_id("[SRC]")
-    bos_id = ctx.tokenizer.token_to_id("[BOS]")
-    eos_id = ctx.tokenizer.token_to_id("[EOS]")
-
-    if None in {unk_id, src_id, bos_id}:
-        raise RuntimeError("tokenizer must have [UNK], [BOS], [EOS] and [SRC] tokens")
-
     src_token_id = ctx.tokenizer.token_to_id(source) if source else None
     if src_token_id is None:
-        src_token_id = unk_id
+        src_token_id = ctx.special_tokens.unk_id
 
     input = [
-        src_id,
+        ctx.special_tokens.src_id,
         src_token_id,
-        bos_id,
+        ctx.special_tokens.bos_id,
     ]
     if seed:
         input += ctx.tokenizer.encode(seed)
@@ -215,7 +209,7 @@ def generate_seq(ctx: GeneratorContext, seed: str = None, source: str = None):
         ("(", ")"),
     )
 
-    excluded_tokens = {unk_id}
+    excluded_tokens = {ctx.special_tokens.unk_id}
     for idx in range(ctx.tokenizer.get_vocab_size()):
         token = ctx.tokenizer.id_to_token(idx)
         # only special tokens start with [
@@ -230,7 +224,7 @@ def generate_seq(ctx: GeneratorContext, seed: str = None, source: str = None):
                 excluded_tokens.add(idx)
                 break
 
-    excluded_tokens.discard(eos_id)
+    excluded_tokens.discard(ctx.special_tokens.eos_id)
     excluded_tokens = torch.LongTensor(list(sorted(excluded_tokens)))
 
     with torch.no_grad():  # no tracking history
@@ -264,7 +258,7 @@ def generate_seq(ctx: GeneratorContext, seed: str = None, source: str = None):
             num_generated_tokens += 1
 
             # when "end of string" is emitted, break early
-            if token_idx == eos_id:
+            if token_idx == ctx.special_tokens.eos_id:
                 break
 
     if token_ids:

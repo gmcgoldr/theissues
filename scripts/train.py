@@ -10,7 +10,7 @@ import numpy as np
 import tokenizers as tk
 import torch
 
-from theissues import training
+from theissues import training, utils
 from theissues.model import TrainArgs, TransformerModel
 
 
@@ -61,6 +61,7 @@ def main(
     logging.info(json.dumps(train_args._asdict(), indent="\t"))
 
     tokenizer = tk.Tokenizer.from_file(str(path_tokenizer))
+    special_tokens = utils.SpecialTokens(tokenizer, validate=True)
 
     with path_statements.open("rb") as fio:
         tokens = np.load(fio)
@@ -83,7 +84,7 @@ def main(
     # Adam is a robust choice while other parts of the algorithm and training
     # pipeline are changing
     optimizer = torch.optim.Adam(model.parameters())
-    split_token_id = tokenizer.token_to_id("[SRC]")
+    split_token_id = special_tokens.src_id
     split_inidces = training.build_batch_split_indices(tokens, split_token_id)
     train_ctx = training.TrainContext(
         model=model.to(device),
@@ -106,6 +107,7 @@ def main(
     generate_ctx = training.GeneratorContext(
         model=model,
         tokenizer=tokenizer,
+        special_tokens=special_tokens,
         temperature=1.0,
         temperature_decay=0.8,
         temperature_decay_scale=8,
