@@ -16,7 +16,7 @@ class TrainArgs(NamedTuple):
     nheads: int = 4
     dropout: float = 0.0
     tied_weights: bool = False
-    seq_len: int = 128
+    seq_len: int = 256
     min_conditional: int = 0
     batches_per_epoch: int = 256
     batch_size: int = 32
