@@ -112,6 +112,7 @@ def main(
         tokenizer=tokenizer,
         special_tokens=special_tokens,
         max_tokens=train_args.seq_len,
+        rng=rng,
     )
 
     generate_seed_source = (
@@ -143,7 +144,7 @@ def main(
             if iepoch % 24 == 0:
                 logging.info("Sample sentences:")
                 for seed, source in generate_seed_source:
-                    sequence = training.generate_seq(generate_ctx, rng, seed, source)
+                    sequence = training.generate_seq(generate_ctx, seed, source)
                     logging.info(f"> {sequence}")
                 # save periodically
                 save_model(

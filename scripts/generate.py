@@ -36,11 +36,14 @@ def main(
     with (dir_model / "state.pt").open("rb") as fio:
         model.load_state_dict(torch.load(fio))
 
+    rng = np.random.default_rng()
+
     generate_ctx = training.GeneratorContext(
         model=model,
         tokenizer=tokenizer,
         special_tokens=special_tokens,
         max_tokens=train_args.seq_len,
+        rng=rng,
     )
 
     generate_seed_source = (
@@ -49,10 +52,8 @@ def main(
         (None, "[POL_10636]"),  # Singh
     )
 
-    rng = np.random.default_rng()
-
     for seed, source in generate_seed_source:
-        sequence = training.generate_seq(generate_ctx, rng, seed, source)
+        sequence = training.generate_seq(generate_ctx, seed, source)
         print(f"> {sequence}")
 
 

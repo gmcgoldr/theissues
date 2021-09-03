@@ -177,6 +177,7 @@ class GeneratorContext(NamedTuple):
     tokenizer: tk.Tokenizer
     special_tokens: SpecialTokens
     max_tokens: int
+    rng: np.random.Generator
     temperature: float = 0.9
     temperature_decay: float = 0.7
     temperature_decay_scale: int = 16
@@ -231,7 +232,6 @@ def select_uniqueish_token(
 
 def generate_seq(
     ctx: GeneratorContext,
-    rng: np.random.Generator,
     seed: str = None,
     source: str = None,
 ):
@@ -306,9 +306,11 @@ def generate_seq(
 
             # keep track of uniqueness on the same scale as the temp. decay
             unique_sequence = token_ids[-ctx.temperature_decay_scale :]
-            candidates = rng.choice(probs.size(0), ctx.max_draws, p=probs.cpu().numpy())
+            candidates = ctx.rng.choice(
+                probs.size(0), ctx.max_draws, p=probs.cpu().numpy()
+            )
             token_idx = select_uniqueish_token(
-                rng, candidates, unique_sequence, ctx.min_uniqueness
+                ctx.rng, candidates, unique_sequence, ctx.min_uniqueness
             )
             # if none of the tokens help make the sequence unique, end it
             if token_idx is None:
