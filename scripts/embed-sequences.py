@@ -63,7 +63,7 @@ def main(
         for ibatch in tqdm(range(num_batches)):
             istart = ibatch * batch_size
             batch_splits = seq_splits[istart : istart + batch_size]
-            batch_indices = training.build_token_split_gather_indices(
+            batch_indices = training.build_sequence_gather_indices(
                 num_tokens=tokens.size(0),
                 splits=batch_splits,
                 seq_len=train_args.seq_len,

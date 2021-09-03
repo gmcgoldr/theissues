@@ -17,9 +17,9 @@ def test_build_token_splits_handles_out_of_range():
     np.testing.assert_equal(indices.tolist(), [])
 
 
-def test_token_split_gather_indices_gathers_sequences():
+def test_sequence_gather_indices_gathers_sequences():
     num_tokens = 3
-    indices = training.build_token_split_gather_indices(num_tokens, [0, 1], 4)
+    indices = training.build_sequence_gather_indices(num_tokens, [0, 1], 4)
     assert indices.tolist() == [
         [0, 1],
         [1, 2],

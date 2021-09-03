@@ -43,7 +43,7 @@ def build_token_splits(
     return indices
 
 
-def build_token_split_gather_indices(
+def build_sequence_gather_indices(
     num_tokens: int,
     splits: torch.LongTensor,
     seq_len: int,
@@ -149,7 +149,7 @@ def train_epoch(ctx: TrainContext) -> TrainOutput:
     for _ in range(num_batches):
         # chose some of the sequence starts at random for this batch
         batch_splits = ctx.rng.choice(ctx.batch_indices, ctx.batch_size)
-        batch_indices = build_token_split_gather_indices(
+        batch_indices = build_sequence_gather_indices(
             num_tokens=ctx.tokens.size(0),
             splits=batch_splits,
             seq_len=ctx.seq_len,
