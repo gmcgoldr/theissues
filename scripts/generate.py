@@ -3,6 +3,7 @@
 import json
 from pathlib import Path
 
+import numpy as np
 import tokenizers as tk
 import torch
 
@@ -39,9 +40,6 @@ def main(
         model=model,
         tokenizer=tokenizer,
         special_tokens=special_tokens,
-        temperature=1.0,
-        temperature_decay=0.8,
-        temperature_decay_scale=8,
         max_tokens=train_args.seq_len,
     )
 
@@ -51,8 +49,10 @@ def main(
         (None, "[POL_10636]"),  # Singh
     )
 
+    rng = np.random.default_rng()
+
     for seed, source in generate_seed_source:
-        sequence = training.generate_seq(generate_ctx, seed, source)
+        sequence = training.generate_seq(generate_ctx, rng, seed, source)
         print(f"> {sequence}")
 
 

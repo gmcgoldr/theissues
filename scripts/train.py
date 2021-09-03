@@ -108,9 +108,6 @@ def main(
         model=model,
         tokenizer=tokenizer,
         special_tokens=special_tokens,
-        temperature=1.0,
-        temperature_decay=0.8,
-        temperature_decay_scale=8,
         max_tokens=train_args.seq_len,
     )
 
@@ -119,6 +116,8 @@ def main(
         (None, "[POL_9243]"),  # O'Toole
         (None, "[POL_10636]"),  # Singh
     )
+
+    rng = np.random.default_rng()
 
     try:
         last_loss = np.nan
@@ -143,7 +142,7 @@ def main(
             if iepoch % 24 == 0:
                 logging.info("Sample sentences:")
                 for seed, source in generate_seed_source:
-                    sequence = training.generate_seq(generate_ctx, seed, source)
+                    sequence = training.generate_seq(generate_ctx, rng, seed, source)
                     logging.info(f"> {sequence}")
                 # save periodically
                 save_model(

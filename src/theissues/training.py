@@ -1,5 +1,5 @@
 import math
-from typing import NamedTuple
+from typing import List, NamedTuple
 
 import numpy as np
 import tokenizers as tk
@@ -172,13 +172,65 @@ class GeneratorContext(NamedTuple):
     model: torch.nn.Module
     tokenizer: tk.Tokenizer
     special_tokens: SpecialTokens
-    temperature: float
-    temperature_decay: float
-    temperature_decay_scale: int
     max_tokens: int
+    temperature: float = 0.9
+    temperature_decay: float = 0.7
+    temperature_decay_scale: int = 16
+    min_uniqueness: float = 0.5
+    max_draws: int = 16
 
 
-def generate_seq(ctx: GeneratorContext, seed: str = None, source: str = None):
+def select_uniqueish_token(
+    rng: np.random.Generator,
+    candidates: List[int],
+    sequence: List[int],
+    min_uniqueness: float,
+) -> int:
+    """
+    Select an item from a list of candidate items to add to a sequence of items
+    such that some uniqueness is preserved.
+
+    Given a list of candidate items, rejects those which are more repetitive
+    in the sequence.
+
+    Args:
+        rng: the random number generator used to draw
+        candidates: list of candidate items
+        sequence: current sequence of items to attempt to render unique
+        min_uniqueness: decrease the probaility of accepting an item if as its
+            frequency in the sequence reaches this value. Below this value,
+            the item is always rejected.
+
+    Returns:
+        the item index
+    """
+    if not 0.0 <= min_uniqueness <= 1.0:
+        raise ValueError("`min_uniqueness` must be in range [0, 1]")
+
+    unique_set = set(sequence)
+
+    for candidate in candidates:
+        is_unique = candidate not in unique_set
+        uniqueness = (len(unique_set) + is_unique) / (len(sequence) + 1)
+
+        # at `min_uniqueness == 1.0`, the prob collapses to 0 or 1
+        if min_uniqueness == 1.0:
+            accept_prob = 1.0 if uniqueness == 1.0 else 0.0
+        else:
+            accept_prob = max(0, uniqueness - min_uniqueness) / (1.0 - min_uniqueness)
+
+        if rng.random() < accept_prob:
+            return candidate
+
+    return None
+
+
+def generate_seq(
+    ctx: GeneratorContext,
+    rng: np.random.Generator,
+    seed: str = None,
+    source: str = None,
+):
     ctx.model.eval()
 
     try:
@@ -248,10 +300,17 @@ def generate_seq(ctx: GeneratorContext, seed: str = None, source: str = None):
             output = output / temperature
             probs = torch.softmax(output, dim=-1)
 
-            # draw a single token index from the probs
-            token_idx = torch.multinomial(probs.cpu(), 2)[0].item()
+            # keep track of uniqueness on the same scale as the temp. decay
+            unique_sequence = token_ids[-ctx.temperature_decay_scale :]
+            candidates = rng.choice(probs.size(0), ctx.max_draws, p=probs.cpu().numpy())
+            token_idx = select_uniqueish_token(
+                rng, candidates, unique_sequence, ctx.min_uniqueness
+            )
+            # if none of the tokens help make the sequence unique, end it
+            if token_idx is None:
+                token_idx = ctx.special_tokens.eos_id
 
-            # add the word to the input
+            # add it to the input
             input = torch.cat([input, torch.LongTensor([token_idx]).to(device)])
 
             token_ids.append(token_idx)
