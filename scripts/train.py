@@ -68,6 +68,8 @@ def main(
 
     tokens = torch.from_numpy(tokens).type(torch.LongTensor)
 
+    rng = np.random.default_rng()
+
     device = "cuda" if torch.cuda.is_available() else "cpu"
     nvocab = tokenizer.get_vocab_size()
     model = TransformerModel(
@@ -85,7 +87,7 @@ def main(
     # pipeline are changing
     optimizer = torch.optim.Adam(model.parameters())
     split_token_id = special_tokens.src_id
-    split_inidces = training.build_batch_split_indices(tokens, split_token_id)
+    split_inidces = training.build_token_splits(tokens, split_token_id)
     train_ctx = training.TrainContext(
         model=model.to(device),
         nvocab=nvocab,
@@ -98,6 +100,7 @@ def main(
         batch_size=train_args.batch_size,
         batch_indices=split_inidces,
         grad_clip=train_args.grad_clip,
+        rng=rng,
     )
 
     max_epochs = max(1, train_args.max_examples // train_ctx.epoch_size)
@@ -116,8 +119,6 @@ def main(
         (None, "[POL_9243]"),  # O'Toole
         (None, "[POL_10636]"),  # Singh
     )
-
-    rng = np.random.default_rng()
 
     try:
         last_loss = np.nan

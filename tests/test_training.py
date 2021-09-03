@@ -5,42 +5,27 @@ import torch
 from theissues import training
 
 
-def test_build_batch_split_indices_returns_indices():
+def test_build_token_splits_returns_indices():
     tokens = torch.LongTensor([1, 2, 3, 1, 2])
-    indices = training.build_batch_split_indices(tokens, 2)
+    indices = training.build_token_splits(tokens, 2)
     np.testing.assert_equal(indices.tolist(), [1, 4])
 
 
-def test_build_batch_split_indices_handles_out_of_range():
+def test_build_token_splits_handles_out_of_range():
     tokens = torch.LongTensor([1, 2, 3, 1, 2])
-    indices = training.build_batch_split_indices(tokens, 4)
+    indices = training.build_token_splits(tokens, 4)
     np.testing.assert_equal(indices.tolist(), [])
 
 
-def test_build_batch_indices_returns_contiguous_sequences_at_split():
-    rng = np.random.Generator(np.random.PCG64(123))
-    tokens = torch.arange(8)
-    split_idxs = torch.LongTensor([1])
-    indices = training.build_batch_indices(rng, tokens, split_idxs, 3, 2)
-    # can select only sequences starting at `1`, so it will return both
-    # sequences there, of length 3 (note seq along dim 0)
-    np.testing.assert_equal(indices.tolist(), [[1, 1], [2, 2], [3, 3]])
-
-
-def test_build_batch_indices_returns_in_bounds_with_wraparound():
-    rng = np.random.Generator(np.random.PCG64(123))
-    tokens = torch.arange(8)
-    split_idxs = torch.LongTensor([7])
-    indices = training.build_batch_indices(rng, tokens, split_idxs, 3, 2)
-    np.testing.assert_equal(indices.tolist(), [[7, 7], [0, 0], [1, 1]])
-
-
-def test_build_batch_indices_returns_in_bounds_with_wraparound():
-    rng = np.random.Generator(np.random.PCG64(123))
-    tokens = torch.arange(8)
-    split_idxs = torch.LongTensor([1, 2])
-    indices = training.build_batch_indices(rng, tokens, split_idxs, 3, 2)
-    np.testing.assert_equal(indices.tolist(), [[1, 2], [2, 3], [3, 4]])
+def test_token_split_gather_indices_gathers_sequences():
+    num_tokens = 3
+    indices = training.build_token_split_gather_indices(num_tokens, [0, 1], 4)
+    assert indices.tolist() == [
+        [0, 1],
+        [1, 2],
+        [2, 0],
+        [0, 1],
+    ]
 
 
 def test_select_uniqueish_tokens_raises_for_invalid_min():

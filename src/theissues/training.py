@@ -28,9 +28,10 @@ class TrainContext(NamedTuple):
     # batches can start at these indices in the `tokens`
     batch_indices: torch.LongTensor
     grad_clip: float
+    rng: np.random.Generator
 
 
-def build_batch_split_indices(
+def build_token_splits(
     tokens: torch.LongTensor, split_token_id: int
 ) -> torch.LongTensor:
     """
@@ -42,33 +43,38 @@ def build_batch_split_indices(
     return indices
 
 
-def build_batch_indices(
-    rng: np.random.Generator,
-    tokens: torch.LongTensor,
-    split_idxs: torch.LongTensor,
+def build_token_split_gather_indices(
+    num_tokens: int,
+    splits: torch.LongTensor,
     seq_len: int,
-    batch_size: int,
 ) -> torch.LongTensor:
     """
-    Build a tensor of token indices from which to build a batch of sequences.
+    Build a tensor of indices in a token tensor which can be used to gather
+    a tensor of sequences with shape `(seq_len, num_seqs)` where `num_seqs`
+    is the length of `splits`.
+
+    Each sequence starts at the corresponding `split` index and runs for
+    `seq_len` tokens. Sequences can run over one-another, and they loop around
+    at the end of the `tokens` tensor.
+
+    For example, given a tensor of 3 tokens, `seq_splits = [0, 1]` and
+    `seq_len = 3`, the resulting tensor would be the transpose of:
+    `[[0, 1, 2], [1, 2, 0]]`.
 
     Args:
-        rng: a random number generator used to select sequence locations
-        tokens: the full tensor of tokens from which to build sequences
-        split_idxs: indices in the `tokens` tensor where batches can start
+        num_tokens: index in a tensor of this many tokens
+        split_idxs: indices in the `tokens` tensor where each sequence starts
         seq_len: build sequences with this many tokens
-        batch_size: build a batch with this many sequences
 
     Returns:
-        tensor of token indices in the `tokens` array from which to form a
-        batch with shape `(seq_len, batch_size)`
+        tensor of indices in the `tokens` tensor
     """
+    splits = torch.as_tensor(splits, dtype=torch.long)
     indices = torch.arange(seq_len, dtype=torch.long)
-    splits = rng.choice(split_idxs, batch_size)
     indices = indices[None, :] + splits[:, None]
     # if starting a sequence too close to the end of the data, will wrap around
     # and keep using the start as the next sequence
-    indices = indices % tokens.size(0)
+    indices = indices % num_tokens
     indices = indices.transpose(0, 1)
     return indices
 
@@ -112,8 +118,6 @@ def train_epoch(ctx: TrainContext) -> TrainOutput:
 
     ctx.model.train()
 
-    rng = np.random.default_rng()
-
     sum_loss = 0.0
 
     # NOTE: an epoch is normally a full run over the data, but here it's used
@@ -123,14 +127,14 @@ def train_epoch(ctx: TrainContext) -> TrainOutput:
     num_examples = 0
 
     for _ in range(num_batches):
-        batch_indices = build_batch_indices(
-            rng=rng,
-            tokens=ctx.tokens,
-            split_idxs=ctx.batch_indices,
+        # chose some of the sequence starts at random for this batch
+        batch_splits = ctx.rng.choice(ctx.batch_indices, ctx.batch_size)
+        batch_indices = build_token_split_gather_indices(
+            num_tokens=ctx.tokens.size(0),
+            splits=batch_splits,
             seq_len=ctx.seq_len,
-            batch_size=ctx.batch_size,
         )
-
+        # build token batch tensor of shape `(seq_len, batch_size)`
         batch_data = ctx.tokens[batch_indices]
 
         inputs = batch_data[:-1]
