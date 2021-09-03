@@ -148,7 +148,7 @@ class TransformerModel(torch.nn.Module):
         torch.nn.init.zeros_(self.decoder.weight)
         torch.nn.init.uniform_(self.decoder.weight, -scale, scale)
 
-    def forward(self, x: torch.LongTensor) -> torch.FloatTensor:
+    def forward_latent(self, x: torch.LongTensor) -> torch.FloatTensor:
         # convert the token indieces to the embedding space, with positional
         # encodings and dropout applied
         x = self.embeddings(x) * math.sqrt(self.ndims_embed)
@@ -161,6 +161,12 @@ class TransformerModel(torch.nn.Module):
 
         # run through the transformer into the output feature space
         x = self.transformer_encoder(x, attention_mask)
+
+        return x
+
+    def forward(self, x: torch.LongTensor) -> torch.FloatTensor:
+        x = self.forward_latent(x)
+
         # decode the features into token weights
         if self.tied:
             x = torch.nn.functional.linear(x, self.embeddings.weight, self.decoder.bias)

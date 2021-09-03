@@ -1,4 +1,5 @@
 import numpy as np
+import pytest
 import torch
 
 from theissues import model
@@ -54,8 +55,9 @@ def test_transformer_model_generates_subsequent_mask():
     )
 
 
-def test_transformer_model_outputs_weights_over_vocab():
-    m = model.TransformerModel(
+@pytest.fixture
+def dummy_model():
+    return model.TransformerModel(
         nvocab=32,
         seq_len=8,
         ndims_embed=4,
@@ -65,29 +67,37 @@ def test_transformer_model_outputs_weights_over_vocab():
         dropout=0,
         tied=False,
     )
+
+
+def test_transformer_model_forward_latent_outputs_token_vectors(
+    dummy_model: model.TransformerModel,
+):
     # 8 tokens, 3 sequences in the batch
     x = torch.arange(8 * 3, dtype=torch.long).view((8, 3))
-    out = m(x)
+    out = dummy_model.forward_latent(x)
+    out = out.detach()
+    # 8 tokens, 3 sequences, 4-dim embeddings
+    assert out.shape == (8, 3, 4)
+
+
+def test_transformer_model_outputs_weights_over_vocab(
+    dummy_model: model.TransformerModel,
+):
+    # 8 tokens, 3 sequences in the batch
+    x = torch.arange(8 * 3, dtype=torch.long).view((8, 3))
+    out = dummy_model(x)
     out = out.detach()
     # prob. over 32 vocab tokens, for 3 sequencs, for each of the 8 input tokens
     # with the other dimensions having been collected in the transformer
     assert out.shape == (8, 3, 32)
 
 
-def test_transformer_model_outputs_weights_over_vocab_when_tied():
-    m = model.TransformerModel(
-        nvocab=32,
-        seq_len=8,
-        ndims_embed=4,
-        ndims_forward=6,
-        nheads=2,
-        nlayers=5,
-        dropout=0,
-        tied=True,
-    )
+def test_transformer_model_outputs_weights_over_vocab_when_tied(
+    dummy_model: model.TransformerModel,
+):
     # 8 tokens, 3 sequences in the batch
     x = torch.arange(8 * 3, dtype=torch.long).view((8, 3))
-    out = m(x)
+    out = dummy_model(x)
     out = out.detach()
     # prob. over 32 vocab tokens, for 3 sequencs, for each of the 8 input tokens
     # with the other dimensions having been collected in the transformer
