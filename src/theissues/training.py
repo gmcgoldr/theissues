@@ -79,6 +79,26 @@ def build_token_split_gather_indices(
     return indices
 
 
+def build_sequence_mask_after(
+    sequences: torch.LongTensor, end_value: int
+) -> torch.ByteTensor:
+    """
+    Given a tensor of sequences with shape `(seq_len, num_seqs)`, builds a mask
+    of the same shape with values `1` for sequence values appearing prior or at
+    the first occurence of `end_value` in each sequence, and `0` for those
+    tokens following.
+    """
+    ends = (sequences == end_value).cpu().numpy()
+    # if the end value isn't in a sequence, mark the last token as end
+    ends[-1:, :] = True
+    # argmax will return the first encountered index
+    ends = torch.from_numpy(np.argmax(ends, axis=0))
+    # the token index in each sequence
+    indices = torch.arange(sequences.size(0), dtype=torch.long)
+    # mask each token index prior to and including the end index
+    return (indices[:, None] <= ends).type(torch.ByteTensor)
+
+
 class TrainOutput(NamedTuple):
     sum_loss: float
     num_examples: int

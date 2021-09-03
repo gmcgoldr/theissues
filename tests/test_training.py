@@ -28,6 +28,27 @@ def test_token_split_gather_indices_gathers_sequences():
     ]
 
 
+def test_build_sequence_mask_after_masks_tokens():
+    sequences = torch.LongTensor(
+        [
+            [0, 0],
+            [1, 1],
+            [3, 2],
+            [3, 2],
+            [2, 2],
+        ]
+    )
+    mask = training.build_sequence_mask_after(sequences, 3)
+    # masks after the first occurrence of 3, or nothing if there is no 3
+    assert mask.tolist() == [
+        [1, 1],
+        [1, 1],
+        [1, 1],
+        [0, 1],
+        [0, 1],
+    ]
+
+
 def test_select_uniqueish_tokens_raises_for_invalid_min():
     rng = np.random.Generator(np.random.PCG64(123))
     sequence = ["a", "b"]
