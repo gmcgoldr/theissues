@@ -34,7 +34,7 @@ def save_model(dir_model: Path, args: TrainArgs, context: training.TrainContext)
 
 
 def main(
-    path_statements: Path,
+    path_sequences: Path,
     path_tokenizer: Path,
     dir_model: Path,
     path_log: Path,
@@ -63,10 +63,9 @@ def main(
     tokenizer = tk.Tokenizer.from_file(str(path_tokenizer))
     special_tokens = utils.SpecialTokens(tokenizer, validate=True)
 
-    with path_statements.open("rb") as fio:
-        tokens = np.load(fio)
-
-    tokens = torch.from_numpy(tokens).type(torch.LongTensor)
+    with path_sequences.open("rb") as fio:
+        sequences = np.load(fio)
+    sequences = torch.from_numpy(sequences).type(torch.LongTensor)
 
     rng = np.random.default_rng()
 
@@ -86,15 +85,15 @@ def main(
     # Adam is a robust choice while other parts of the algorithm and training
     # pipeline are changing
     optimizer = torch.optim.Adam(model.parameters())
-    split_token_id = special_tokens.src_id
-    split_inidces = training.build_token_splits(tokens, split_token_id)
+    split_token_id = special_tokens.sep_id
+    split_inidces = training.build_sequences_splits(sequences, split_token_id)
     train_ctx = training.TrainContext(
         model=model.to(device),
         nvocab=nvocab,
         seq_len=train_args.seq_len,
         min_conditional=train_args.min_conditional,
         device=device,
-        tokens=tokens.to(device),
+        sequences=sequences.to(device),
         optimizer=optimizer,
         epoch_size=train_args.batches_per_epoch * train_args.batch_size,
         batch_size=train_args.batch_size,
@@ -170,7 +169,7 @@ if __name__ == "__main__":
     from distutils.util import strtobool
 
     parser = argparse.ArgumentParser()
-    parser.add_argument("path_statements", type=Path)
+    parser.add_argument("path_sequences", type=Path)
     parser.add_argument("path_tokenizer", type=Path)
     parser.add_argument("dir_model", type=Path)
     parser.add_argument("--path_log", type=Path)

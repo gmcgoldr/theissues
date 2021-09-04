@@ -14,20 +14,22 @@ from theissues.model import TrainArgs, TransformerModel
 
 
 def main(
-    path_out: Path,
-    path_statements: Path,
+    path_sequences: Path,
     path_tokenizer: Path,
     dir_model: Path,
+    path_embeddings: Path,
 ):
+    path_embeddings.parent.mkdir(parents=True, exist_ok=True)
+
     with (dir_model / "args.json").open("r") as fio:
         train_args = TrainArgs(**json.load(fio))
 
     tokenizer = tk.Tokenizer.from_file(str(path_tokenizer))
     special_tokens = utils.SpecialTokens(tokenizer, validate=True)
 
-    with path_statements.open("rb") as fio:
-        tokens = np.load(fio)
-    tokens = torch.from_numpy(tokens).type(torch.LongTensor)
+    with path_sequences.open("rb") as fio:
+        sequences = np.load(fio)
+    sequences = torch.from_numpy(sequences).type(torch.LongTensor)
 
     device = "cuda" if torch.cuda.is_available() else "cpu"
     nvocab = tokenizer.get_vocab_size()
@@ -44,14 +46,14 @@ def main(
     model.eval()
 
     model = model.to(device)
-    tokens = tokens.to(device)
+    sequences = sequences.to(device)
 
     with (dir_model / "state.pt").open("rb") as fio:
         model.load_state_dict(torch.load(fio))
 
     # start sequences at the BOS tokens (not SRC as in training, this ignores
     # the sequence source)
-    seq_splits = training.build_token_splits(tokens, special_tokens.bos_id)
+    seq_splits = training.build_sequences_splits(sequences, special_tokens.bos_id)
     print(f"Number of sequences: {seq_splits.size(0)}")
 
     batch_size = 2 ** 10
@@ -64,11 +66,11 @@ def main(
             istart = ibatch * batch_size
             batch_splits = seq_splits[istart : istart + batch_size]
             batch_indices = training.build_sequence_gather_indices(
-                num_tokens=tokens.size(0),
+                num_tokens=sequences.size(0),
                 splits=batch_splits,
                 seq_len=train_args.seq_len,
             )
-            batch_sequences = tokens[batch_indices]
+            batch_sequences = sequences[batch_indices]
             batch_mask = training.build_sequence_mask_after(
                 batch_sequences, special_tokens.eos_id
             )
@@ -83,7 +85,7 @@ def main(
 
             sequence_embeds += out.tolist()
 
-    with path_out.open("wb") as fio:
+    with path_embeddings.open("wb") as fio:
         np.save(fio, sequence_embeds)
 
 
@@ -91,9 +93,9 @@ if __name__ == "__main__":
     import argparse
 
     parser = argparse.ArgumentParser()
-    parser.add_argument("path_out", type=Path)
-    parser.add_argument("path_statements", type=Path)
+    parser.add_argument("path_sequences", type=Path)
     parser.add_argument("path_tokenizer", type=Path)
     parser.add_argument("dir_model", type=Path)
+    parser.add_argument("path_embeddings", type=Path)
 
     main(**vars(parser.parse_args()))

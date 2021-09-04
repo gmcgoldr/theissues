@@ -5,15 +5,15 @@ import torch
 from theissues import training
 
 
-def test_build_token_splits_returns_indices():
+def test_build_sequences_splits_returns_indices():
     tokens = torch.LongTensor([1, 2, 3, 1, 2])
-    indices = training.build_token_splits(tokens, 2)
+    indices = training.build_sequences_splits(tokens, 2)
     np.testing.assert_equal(indices.tolist(), [1, 4])
 
 
-def test_build_token_splits_handles_out_of_range():
+def test_build_sequences_splits_handles_out_of_range():
     tokens = torch.LongTensor([1, 2, 3, 1, 2])
-    indices = training.build_token_splits(tokens, 4)
+    indices = training.build_sequences_splits(tokens, 4)
     np.testing.assert_equal(indices.tolist(), [])
 
 

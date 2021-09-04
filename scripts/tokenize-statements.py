@@ -1,92 +1,63 @@
 #!/usr/bin/env python3
 
 """
-Build the binary tokenized data for training from the statements.
+Tokenize each `Statement` and encode it as record of the form:
 
-Creates a file `statements.npy` which is a dense array of packed statements
-in the form `[src]src_val[bos]...[eos]` where `...` is a sequence of tokens.
-This is encoded into vocabulary entries.
+`[sep] src [bos] token ... [eos]`
+
+Where each token is an long int encoding a vocabulary entry. `[sep]`
+is the separator, `src` is the source of the statement, `[bos]` is the
+beggining of a string and `[eos]` is the end of a string.
 """
 
+import itertools
 import json
 import warnings
-from collections import defaultdict
 from pathlib import Path
 
 import numpy as np
 import tokenizers as tk
+from typing_extensions import Concatenate
 
 from theissues import utils
 
 
 def main(
-    path_in: Path,
-    path_out: Path,
+    path_statements: Path,
     path_tokenizer: Path,
+    path_sequences: Path,
 ):
-    path_out.parent.mkdir(parents=True, exist_ok=True)
+    path_sequences.parent.mkdir(parents=True, exist_ok=True)
 
     tokenizer = tk.Tokenizer.from_file(str(path_tokenizer))
-    special_tokens = utils.SpecialTokens(tokenizer, validate=True)
 
     statements = []
-    with path_in.open("r") as fio:
-        for statement in fio:
-            if not statement.strip():
+    with path_statements.open("r") as fio:
+        for line in fio:
+            if not line.strip():
                 continue
-            source, sequence = json.loads(statement)
-            statements.append((source, sequence))
+            statements.append(utils.Statement(*json.loads(line)))
 
-    print("Tokenizing sequences...")
-    sequences = [s for _, s in statements]
-    tokenized_sequences = tokenizer.encode_batch(sequences)
+    print("Tokenizing texts...")
+    tokenized = tokenizer.encode_batch(
+        list(map(utils.prepare_statement_encoding, statements))
+    )
+    tokenized = [t.ids for t in tokenized]
+    chained = list(itertools.chain.from_iterable(tokenized))
 
-    print("Counting tokens...")
-    counts = defaultdict(int)
-    norm = 0
-    for sequence in tokenized_sequences:
-        for token in sequence.tokens:
-            counts[token] += 1
-        norm += 1
-
-    counts = list(sorted([(c, t) for t, c in counts.items()]))
-    print(f"Unique tokens: {len(counts)}")
-
-    print("Min frequecy:")
-    for count, token in counts[:10]:
-        print(f"  {token}: {count} ({count / norm * 100:.2f}%)")
-
-    print("Max frequecy:")
-    for count, token in counts[-10:]:
-        print(f"  {token}: {count} ({count / norm * 100:.2f}%)")
-
-    print("Concatenating...")
-    assert len(statements) == len(tokenized_sequences)
-    statements = [(s, t.ids) for (s, _), t in zip(statements, tokenized_sequences)]
-
-    concatenated = []
-    with path_in.open("r") as fio:
-        for source, token_ids in statements:
-            src_id = tokenizer.token_to_id(source)
-            if src_id is None:
-                warnings.warn(f"unknown source: {source}")
-            concatenated += utils.build_entry(
-                token_ids=token_ids,
-                src_id=src_id,
-                special_tokens=special_tokens,
-            )
-
-    concatenated = np.array(concatenated, dtype="int64")
-    print(tokenizer.decode(concatenated[:32], skip_special_tokens=False))
-    with path_out.open("wb") as fio:
-        np.save(fio, concatenated)
+    print("Saving...")
+    chained = np.array(chained, dtype=utils.TokenId)
+    with path_sequences.open("wb") as fio:
+        np.save(fio, chained)
+    print(chained[:32])
+    print(tokenizer.decode(chained[:32], skip_special_tokens=False))
 
 
 if __name__ == "__main__":
     import argparse
 
     parser = argparse.ArgumentParser()
-    parser.add_argument("path_in", type=Path)
-    parser.add_argument("path_out", type=Path)
+    parser.add_argument("path_statements", type=Path)
     parser.add_argument("path_tokenizer", type=Path)
+    parser.add_argument("path_sequences", type=Path)
     main(**vars(parser.parse_args()))

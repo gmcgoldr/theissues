@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
 
 """
-Build the tokenizer and pre-process the data into "statements" which are ready
-for tokenization.
+Build the tokenizer. This involves 1) normalizing the data, 2) structuring the
+data into sequences, 3) generating the source tokens (list of hansard sources
+which currently are politicians).
 
-Pre-procssing involves normalizing text and mapping statements sources to their
-vocabulary token.
+Outputs the tokenizer and a list of `statements`. A `statement` is a sequence
+of text and the ID of the source that issued that sequence. Right now that is
+a paragraph and the ID of the policitican who uttered the paragraph.
 """
 
 import json
@@ -13,7 +15,6 @@ import re
 import tempfile
 import warnings
 import xml.etree.ElementTree as ET
-from itertools import repeat
 from pathlib import Path
 from typing import List
 
@@ -56,7 +57,7 @@ def build_paragraphs(text: str) -> List[str]:
 
 
 def main(
-    path_in: Path,
+    path_hansards: Path,
     path_statements: Path,
     path_tokenizer: Path,
     vocab_size: int,
@@ -65,25 +66,19 @@ def main(
     path_tokenizer.parent.mkdir(parents=True, exist_ok=True)
 
     print("Parsing hansards...")
-    with path_in.open("r") as fio:
+    with path_hansards.open("r") as fio:
         records = [json.loads(l) for l in fio if l.strip()]
-
-    texts = [
-        (
-            "[POL_{}]".format(r["politician_id"]),
-            r["content_en"],
-        )
-        for r in records
-    ]
 
     paragraphs = []
     statements = []
 
-    for i, (text_src, text) in enumerate(texts):
+    for i, record in enumerate(records):
+        text = record["content_en"]
+        source = "[POL_{}]".format(record["politician_id"])
         try:
-            text_paragraphs = build_paragraphs(text)
-            paragraphs += text_paragraphs
-            statements += list(zip(repeat(text_src), text_paragraphs))
+            for paragraph in build_paragraphs(text):
+                paragraphs.append(paragraph)
+                statements.append(utils.Statement(source, paragraph))
         except ET.ParseError as e:
             warnings.warn(f"invalid XML in record {i}: {e}")
 
@@ -99,16 +94,10 @@ def main(
         f"{median_chars:.0f} < "
         f"{high_chars:.0f}"
     )
-    source_tokens = list(sorted(set([s for s, _ in statements])))
+    source_tokens = list(sorted(set([s.source for s in statements])))
     print(f"Number of sources: {len(source_tokens)}")
 
-    special_tokens = [
-        utils.SpecialTokens.unk_token,
-        utils.SpecialTokens.bos_token,
-        utils.SpecialTokens.eos_token,
-        utils.SpecialTokens.src_token,
-    ]
-    special_tokens += source_tokens
+    special_tokens = list(utils.SpecialTokens.tokens()) + source_tokens
     if len(special_tokens) >= vocab_size:
         raise RuntimeError("vocab size must exceed number of special tokens")
 
@@ -116,7 +105,7 @@ def main(
         fio.write("\n".join(paragraphs))
 
         print("Training...")
-        tokenizer = tk.Tokenizer(tk.models.WordPiece(unk_token="[UNK]"))
+        tokenizer = tk.Tokenizer(tk.models.WordPiece(unk_token=utils.SpecialTokens.unk))
         trainer = tk.trainers.WordPieceTrainer(
             vocab_size=vocab_size, special_tokens=special_tokens
         )
@@ -131,7 +120,7 @@ if __name__ == "__main__":
     import argparse
 
     parser = argparse.ArgumentParser()
-    parser.add_argument("path_in", type=Path)
+    parser.add_argument("path_hansards", type=Path)
     parser.add_argument("path_statements", type=Path)
     parser.add_argument("path_tokenizer", type=Path)
     parser.add_argument("--vocab_size", type=int, default=2 ** 13)

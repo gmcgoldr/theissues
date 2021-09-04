@@ -18,28 +18,28 @@ class TrainContext(NamedTuple):
     # make predictions with at least this many tokens as conditionals
     min_conditional: int
     device: str
-    # the full text of tokens from which to create sequences
-    tokens: torch.LongTensor
+    # tensor of token ids forming the statement sequences
+    sequences: torch.LongTensor
     optimizer: torch.optim.Optimizer
     # iterate this many batches in an epoch
     epoch_size: int
     # include this many sequences in a batch
     batch_size: int
-    # batches can start at these indices in the `tokens`
+    # batches can start at these indices in the `sequences`
     batch_indices: torch.LongTensor
     grad_clip: float
     rng: np.random.Generator
 
 
-def build_token_splits(
-    tokens: torch.LongTensor, split_token_id: int
+def build_sequences_splits(
+    sequences: torch.LongTensor, split_token_id: int
 ) -> torch.LongTensor:
     """
-    Build an array with the indices in the `tokens` array of all tokens which
+    Build an array with the indices in the `sequences` array of all tokens which
     match the `split_token_id`.
     """
-    mask = tokens == split_token_id
-    indices = torch.arange(tokens.size(0), dtype=torch.long)[mask]
+    mask = sequences == split_token_id
+    indices = torch.arange(sequences.size(0), dtype=torch.long)[mask]
     return indices
 
 
@@ -150,12 +150,12 @@ def train_epoch(ctx: TrainContext) -> TrainOutput:
         # chose some of the sequence starts at random for this batch
         batch_splits = ctx.rng.choice(ctx.batch_indices, ctx.batch_size)
         batch_indices = build_sequence_gather_indices(
-            num_tokens=ctx.tokens.size(0),
+            num_tokens=ctx.sequences.size(0),
             splits=batch_splits,
             seq_len=ctx.seq_len,
         )
         # build token batch tensor of shape `(seq_len, batch_size)`
-        batch_data = ctx.tokens[batch_indices]
+        batch_data = ctx.sequences[batch_indices]
 
         inputs = batch_data[:-1]
         targets = batch_data[1:]
@@ -267,7 +267,7 @@ def generate_seq(
         src_token_id = ctx.special_tokens.unk_id
 
     input = [
-        ctx.special_tokens.src_id,
+        ctx.special_tokens.sep_id,
         src_token_id,
         ctx.special_tokens.bos_id,
     ]
@@ -286,18 +286,18 @@ def generate_seq(
     )
 
     excluded_tokens = {ctx.special_tokens.unk_id}
-    for idx in range(ctx.tokenizer.get_vocab_size()):
-        token = ctx.tokenizer.id_to_token(idx)
+    for token_id in range(ctx.tokenizer.get_vocab_size()):
+        token = ctx.tokenizer.id_to_token(token_id)
         # only special tokens start with [
         if token.startswith("["):
-            excluded_tokens.add(idx)
+            excluded_tokens.add(token_id)
             continue
 
         for o, c in char_pairs:
             num_open = token.count(o)
             num_close = token.count(c)
             if num_open != num_close:
-                excluded_tokens.add(idx)
+                excluded_tokens.add(token_id)
                 break
 
     excluded_tokens.discard(ctx.special_tokens.eos_id)

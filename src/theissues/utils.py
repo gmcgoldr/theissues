@@ -1,6 +1,7 @@
+import ctypes
 import re
 import unicodedata
-from typing import List
+from typing import Iterable, Mapping, NamedTuple, Tuple
 
 import tokenizers as tk
 
@@ -24,35 +25,58 @@ def normalize_text(text: str) -> str:
     return text
 
 
+class Statement(NamedTuple):
+    source: str
+    text: str
+
+
+TokenId = ctypes.c_int64
+
+Sequence = Iterable[TokenId]
+
+Vocab = Mapping[str, TokenId]
+
+
 class SpecialTokens:
-    unk_token = "[UNK]"
-    bos_token = "[BOS]"
-    eos_token = "[EOS]"
-    src_token = "[SRC]"
+    unk = "[UNK]"
+    sep = "[SEP]"
+    bos = "[BOS]"
+    eos = "[EOS]"
 
     def __init__(self, tokenizer: tk.Tokenizer, validate: bool = False) -> None:
-        self.unk_id = tokenizer.token_to_id(self.unk_token)
-        self.bos_id = tokenizer.token_to_id(self.bos_token)
-        self.eos_id = tokenizer.token_to_id(self.eos_token)
-        self.src_id = tokenizer.token_to_id(self.src_token)
+        self.unk_id = tokenizer.token_to_id(self.unk)
+        self.bos_id = tokenizer.token_to_id(self.bos)
+        self.eos_id = tokenizer.token_to_id(self.eos)
+        self.sep_id = tokenizer.token_to_id(self.sep)
 
         if validate:
             if self.unk_id is None:
-                raise ValueError(f"tokenizer does not contain {self.unk_token}")
+                raise ValueError(f"tokenizer does not contain {self.unk}")
             if self.bos_id is None:
-                raise ValueError(f"tokenizer does not contain {self.bos_token}")
+                raise ValueError(f"tokenizer does not contain {self.bos}")
             if self.eos_id is None:
-                raise ValueError(f"tokenizer does not contain {self.eos_token}")
-            if self.src_id is None:
-                raise ValueError(f"tokenizer does not contain {self.src_token}")
+                raise ValueError(f"tokenizer does not contain {self.eos}")
+            if self.sep_id is None:
+                raise ValueError(f"tokenizer does not contain {self.sep}")
+
+    @classmethod
+    def tokens(cls) -> Tuple[str]:
+        return (cls.unk, cls.sep, cls.bos, cls.eos)
 
 
-def build_entry(
-    token_ids: List[int], src_id: int, special_tokens: SpecialTokens
-) -> List[int]:
+def prepare_statement_encoding(statement: Statement) -> str:
     """
-    Build a sequencence entry with a source and special tokens.
+    Preparing a statement for encoding. Returns a string of the form:
+
+    `[SEP] source [BOS] text ... [EOS]`
+
+    Args:
+        statement: the statement to encode
     """
-    token_ids = [special_tokens.src_id, src_id, special_tokens.bos_id] + token_ids
-    token_ids.append(special_tokens.eos_id)
-    return token_ids
+    return (
+        f"{SpecialTokens.sep} "
+        f"{statement.source} "
+        f"{SpecialTokens.bos} "
+        f"{statement.text} "
+        f"{SpecialTokens.eos}"
+    )
