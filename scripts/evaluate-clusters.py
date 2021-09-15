@@ -5,6 +5,8 @@ Evaluate the proximity of statements in pre-defined clusters.
 """
 
 import json
+import logging
+import sys
 import warnings
 from pathlib import Path
 
@@ -38,15 +40,28 @@ def main(
     path_sequences: Path,
     path_embeddings: Path,
     path_tokenizer: Path,
+    path_log: Path,
 ):
+    logging_handlers = [logging.StreamHandler(sys.stdout)]
+    if path_log is not None:
+        # clear the log file
+        with path_log.open("w"):
+            pass
+        logging_handlers.append(logging.FileHandler(path_log))
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(message)s",
+        handlers=logging_handlers,
+    )
+
     tokenizer = tk.Tokenizer.from_file(str(path_tokenizer))
     special_tokens = utils.SpecialTokens(tokenizer)
 
-    print("Reading statements ...")
+    logging.info("Reading statements ...")
     with path_statements.open("r") as fio:
         statements = [utils.Statement(*json.loads(l)) for l in fio]
 
-    print("Reading sequences ...")
+    logging.info("Reading sequences ...")
     with path_sequences.open("rb") as fio:
         sequences = np.load(fio)
     sequence_splits = training.build_sequences_splits(
@@ -62,16 +77,16 @@ def main(
     if embeddings.shape[0] != num_statements:
         raise RuntimeError("embeddings don't match statements")
 
-    print("Building clusters ...")
+    logging.info("Building clusters ...")
     topic_groups = clustering.build_topic_groups([s.text for s in statements])
 
-    print("\nCluster sizes:")
+    logging.info("Cluster sizes:")
     for topic, group in topic_groups.items():
-        print(topic, len(group))
+        logging.info("%s: %d", topic, len(group))
         if not group:
             warnings.warn(f"empty topic group: {topic}")
 
-    print("\nEvaluating clusters ...")
+    logging.info("Evaluating clusters ...")
 
     # NOTE: the vector space is effectively a log-probability space for tokens,
     # so the relevant quantities are differencnes. The origin of the space
@@ -95,7 +110,7 @@ def main(
         rng=rng,
     )
 
-    print("\nEuclidean distances:")
+    logging.info("Euclidean distances:")
 
     distances_intra = distances_euclid(pairs_intra[:, 0], pairs_intra[:, 1])
     distances_inter = distances_euclid(pairs_inter[:, 0], pairs_inter[:, 1])
@@ -106,11 +121,11 @@ def main(
     inter_sig = np.std(distances_inter)
     separation = (inter_mu - intra_mu) / (inter_sig ** 2 + intra_sig ** 2) ** 0.5
 
-    print(f"Intra distance: {intra_mu:.2e} ± {intra_sig:.2e}")
-    print(f"Inter distance: {inter_mu:.2e} ± {inter_sig:.2e}")
-    print(f"Separation: {separation:+.2e}")
+    logging.info("Intra distance: %.2e ± %.2e", intra_mu, intra_sig)
+    logging.info("Inter distance: %.2e ± %.2e", inter_mu, inter_sig)
+    logging.info("Separation: %+.2e", separation)
 
-    print("\nCosine distances:")
+    logging.info("Cosine distances:")
 
     distances_intra = distances_cosine(pairs_intra[:, 0], pairs_intra[:, 1])
     distances_inter = distances_cosine(pairs_inter[:, 0], pairs_inter[:, 1])
@@ -121,9 +136,9 @@ def main(
     inter_sig = np.std(distances_inter)
     separation = (inter_mu - intra_mu) / (inter_sig ** 2 + intra_sig ** 2) ** 0.5
 
-    print(f"Intra distance: {intra_mu:.2e} ± {intra_sig:.2e}")
-    print(f"Inter distance: {inter_mu:.2e} ± {inter_sig:.2e}")
-    print(f"Separation: {separation:+.2e}")
+    logging.info("Intra distance: %.2e ± %.2e", intra_mu, intra_sig)
+    logging.info("Inter distance: %.2e ± %.2e", inter_mu, inter_sig)
+    logging.info("Separation: %+.2e", separation)
 
 
 if __name__ == "__main__":
@@ -134,5 +149,6 @@ if __name__ == "__main__":
     parser.add_argument("path_sequences", type=Path)
     parser.add_argument("path_embeddings", type=Path)
     parser.add_argument("path_tokenizer", type=Path)
+    parser.add_argument("--path_log", type=Path)
 
     main(**vars(parser.parse_args()))
