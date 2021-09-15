@@ -112,8 +112,13 @@ def main(
             vocab_size=vocab_size, special_tokens=special_tokens
         )
         if split_lines:
-            tokenizer.pre_tokenizer = tk.pre_tokenizers.Split(
-                pattern="\n", behavior="removed"
+            tokenizer.pre_tokenizer = tk.pre_tokenizers.Sequence(
+                [
+                    tk.pre_tokenizers.Split(pattern="\n", behavior="removed"),
+                    tk.pre_tokenizers.Split(
+                        pattern=tk.Regex("[.,]"), behavior="merged_with_previous"
+                    ),
+                ]
             )
         else:
             tokenizer.pre_tokenizer = tk.pre_tokenizers.Whitespace()
