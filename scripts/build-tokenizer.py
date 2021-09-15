@@ -20,6 +20,7 @@ from typing import List
 
 import numpy as np
 import tokenizers as tk
+from tokenizers.pre_tokenizers import Split as PreTokenizerSplit
 
 from theissues import utils
 
@@ -61,6 +62,7 @@ def main(
     path_statements: Path,
     path_tokenizer: Path,
     vocab_size: int,
+    split_lines: bool,
 ):
     path_statements.parent.mkdir(parents=True, exist_ok=True)
     path_tokenizer.parent.mkdir(parents=True, exist_ok=True)
@@ -109,7 +111,12 @@ def main(
         trainer = tk.trainers.WordPieceTrainer(
             vocab_size=vocab_size, special_tokens=special_tokens
         )
-        tokenizer.pre_tokenizer = tk.pre_tokenizers.Whitespace()
+        if split_lines:
+            tokenizer.pre_tokenizer = tk.pre_tokenizers.Split(
+                pattern="\n", behavior="removed"
+            )
+        else:
+            tokenizer.pre_tokenizer = tk.pre_tokenizers.Whitespace()
         tokenizer.train([fio.name], trainer)
         tokenizer.save(str(path_tokenizer), pretty=True)
 
@@ -124,4 +131,5 @@ if __name__ == "__main__":
     parser.add_argument("path_statements", type=Path)
     parser.add_argument("path_tokenizer", type=Path)
     parser.add_argument("--vocab_size", type=int, default=2 ** 13)
+    parser.add_argument("--split_lines", action="store_true")
     main(**vars(parser.parse_args()))
