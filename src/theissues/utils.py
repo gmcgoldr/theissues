@@ -1,28 +1,7 @@
 import ctypes
-import re
-import unicodedata
 from typing import Iterable, Mapping, NamedTuple, Tuple
 
 import tokenizers as tk
-
-
-def normalize_text(text: str) -> str:
-    """
-    Normalize text to get a connonical respresentation suitable for searching.
-    """
-    # decompose unicode to reduce the alphabet considered during tokenization,
-    # and drop the compatibility character representations
-    text = unicodedata.normalize("NFKD", text)
-    # use only single space as white space, this also means the new line
-    # character is not used in the corpus which is convenient for making line
-    # deliminted data
-    text = re.sub(r"\s+", " ", text.strip())
-    # reserve the square braces for special tokens
-    text = text.replace("[", "(")
-    text = text.replace("]", ")")
-    # remove leading and trailing white space
-    text = text.strip()
-    return text
 
 
 class Statement(NamedTuple):

@@ -20,7 +20,6 @@ from typing import List
 
 import numpy as np
 import tokenizers as tk
-from tokenizers.pre_tokenizers import Split as PreTokenizerSplit
 
 from theissues import utils
 
@@ -49,8 +48,7 @@ def build_paragraphs(text: str) -> List[str]:
             continue
         # get the string with no HTML markup (links and spans tend to be used)
         paragraph = "".join(child.itertext())
-        paragraph = utils.normalize_text(paragraph)
-        if not paragraph:
+        if not paragraph.strip():
             continue
         paragraphs.append(paragraph)
 
@@ -63,6 +61,7 @@ def main(
     path_tokenizer: Path,
     vocab_size: int,
     split_lines: bool,
+    lower_case: bool,
 ):
     path_statements.parent.mkdir(parents=True, exist_ok=True)
     path_tokenizer.parent.mkdir(parents=True, exist_ok=True)
@@ -111,6 +110,20 @@ def main(
         trainer = tk.trainers.WordPieceTrainer(
             vocab_size=vocab_size, special_tokens=special_tokens
         )
+
+        normalizers = [
+            # decompose unicode to reduce the alphabet considered during,
+            # tokenizations and drop the compatibility character representations
+            tk.normalizers.NFKD(),
+            # strip leading and trailing whitespace
+            tk.normalizers.Strip(),
+            # don't allow multiple spaces between tokens
+            tk.normalizers.Replace(tk.Regex(r"\s+"), " "),
+        ]
+        if lower_case:
+            normalizers.append(tk.normalizers.Lowercase())
+        tokenizer.normalizer = tk.normalizers.Sequence(normalizers)
+
         if split_lines:
             tokenizer.pre_tokenizer = tk.pre_tokenizers.Sequence(
                 [
@@ -122,6 +135,7 @@ def main(
             )
         else:
             tokenizer.pre_tokenizer = tk.pre_tokenizers.Whitespace()
+
         tokenizer.train([fio.name], trainer)
         tokenizer.save(str(path_tokenizer), pretty=True)
 
@@ -135,6 +149,7 @@ if __name__ == "__main__":
     parser.add_argument("path_hansards", type=Path)
     parser.add_argument("path_statements", type=Path)
     parser.add_argument("path_tokenizer", type=Path)
-    parser.add_argument("--vocab_size", type=int, default=2 ** 13)
+    parser.add_argument("--vocab_size", type=int, default=2 ** 14)
     parser.add_argument("--split_lines", action="store_true")
+    parser.add_argument("--lower_case", action="store_true")
     main(**vars(parser.parse_args()))
