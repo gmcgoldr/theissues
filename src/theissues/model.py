@@ -21,7 +21,7 @@ class TrainArgs(NamedTuple):
     batches_per_epoch: int = 256
     batch_size: int = 32
     grad_clip: float = 0.5
-    max_examples: int = 2 ** 19
+    max_examples: int = 2 ** 20
 
 
 class PositionalEncoding(torch.nn.Module):
