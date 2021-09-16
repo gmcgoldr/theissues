@@ -254,7 +254,18 @@ def generate_seq(
     ctx: GeneratorContext,
     seed: str = None,
     source: str = None,
-):
+) -> str:
+    """
+    Generate some text using the model.
+
+    Args:
+        ctx: model and generation parameters
+        seed: generate a continuation of this seed
+        source: generate text in the style of this statement source
+
+    Returns:
+        the generated text
+    """
     ctx.model.eval()
 
     try:
@@ -266,6 +277,7 @@ def generate_seq(
     if src_token_id is None:
         src_token_id = ctx.special_tokens.unk_id
 
+    # start the sequence with the usual `[SEP] ID [BOS]` formulation
     input = [
         ctx.special_tokens.sep_id,
         src_token_id,
@@ -280,11 +292,14 @@ def generate_seq(
     input = torch.LongTensor(input).to(device)
     num_generated_tokens = 0
 
+    # exclude tokens that contain these characters as the model isn't clever
+    # enough to reliably close them later (it does sometimes only)
     char_pairs = (
         ("“", "”"),
         ("(", ")"),
     )
 
+    # build a list of tokens to exclude from the generation
     excluded_tokens = {ctx.special_tokens.unk_id}
     for token_id in range(ctx.tokenizer.get_vocab_size()):
         token = ctx.tokenizer.id_to_token(token_id)
@@ -305,6 +320,7 @@ def generate_seq(
 
     with torch.no_grad():  # no tracking history
         while input.size(0) < ctx.max_tokens:
+            # can increaqse or decay the randomeness as the sequence progresses
             temperature_progress = min(
                 1.0, num_generated_tokens / ctx.temperature_decay_scale
             )
