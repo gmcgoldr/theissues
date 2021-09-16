@@ -156,7 +156,6 @@ def main(
             logging.info("> %s", statements[idx].text)
 
 
-
 if __name__ == "__main__":
     import argparse
 
