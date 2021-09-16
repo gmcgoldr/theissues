@@ -24,7 +24,7 @@ import tokenizers as tk
 from theissues import utils
 
 
-def build_paragraphs(text: str) -> List[str]:
+def build_paragraphs(text: str, min_chars: int) -> List[str]:
     """
     Build list of plain text paragraphs from a single HTML-formatted
     hansard statement.
@@ -48,7 +48,7 @@ def build_paragraphs(text: str) -> List[str]:
             continue
         # get the string with no HTML markup (links and spans tend to be used)
         paragraph = "".join(child.itertext())
-        if not paragraph.strip():
+        if len(paragraph.strip()) < min_chars:
             continue
         paragraphs.append(paragraph)
 
@@ -60,6 +60,7 @@ def main(
     path_statements: Path,
     path_tokenizer: Path,
     vocab_size: int,
+    min_chars: int,
     split_lines: bool,
     lower_case: bool,
 ):
@@ -77,7 +78,7 @@ def main(
         text = record["content_en"]
         source = "[POL_{}]".format(record["politician_id"])
         try:
-            for paragraph in build_paragraphs(text):
+            for paragraph in build_paragraphs(text, min_chars):
                 paragraphs.append(paragraph)
                 statements.append(utils.Statement(source, paragraph))
         except ET.ParseError as e:
@@ -150,6 +151,7 @@ if __name__ == "__main__":
     parser.add_argument("path_statements", type=Path)
     parser.add_argument("path_tokenizer", type=Path)
     parser.add_argument("--vocab_size", type=int, default=2 ** 14)
+    parser.add_argument("--min_chars", type=int, default=64)
     parser.add_argument("--split_lines", action="store_true")
     parser.add_argument("--lower_case", action="store_true")
     main(**vars(parser.parse_args()))
