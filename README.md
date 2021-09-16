@@ -178,7 +178,7 @@ pip install .
 
 ```bash
 scripts/download-db.sh
-scripts/build-hansards.sh
+scripts/build-db-json.sh
 ```
 
 ## Training and evaluation
