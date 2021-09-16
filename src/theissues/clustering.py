@@ -15,6 +15,10 @@ def calculate_pca(x: np.ndarray, q: int) -> Tuple[np.ndarray, np.ndarray]:
     Returns the `bias` and `basis` vector which can be used to transform data
     to the PCA space with `q` dimensions using:
 
+    `np.dot(x, basis)`
+
+    or for a centered space:
+
     `np.dot(x + bias, basis)`
 
     The `bias` tensor mean centers data in the space of `x`. The columns of the
@@ -27,8 +31,7 @@ def calculate_pca(x: np.ndarray, q: int) -> Tuple[np.ndarray, np.ndarray]:
         q: the number of dimenisions of the transformed space
 
     Returns:
-        `Linear` module which takes points from the space of `x` into the PCA
-        space.
+        the bias vector, and basis matrix
     """
     if q > x.shape[1]:
         raise ValueError("`q` must be <= the dimensions of `x`")
