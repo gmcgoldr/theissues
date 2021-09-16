@@ -9,7 +9,7 @@ import tokenizers as tk
 import torch
 from tqdm import tqdm
 
-from theissues import training, utils
+from theissues import clustering, training, utils
 from theissues.model import TrainArgs, TransformerModel
 
 
@@ -18,7 +18,11 @@ def main(
     path_tokenizer: Path,
     dir_model: Path,
     path_embeddings: Path,
+    dim_reduction: float,
 ):
+    if not (0 < dim_reduction <= 1.0):
+        raise ValueError("dimensionality reduction must be in range (0, 1]")
+
     path_embeddings.parent.mkdir(parents=True, exist_ok=True)
 
     with (dir_model / "args.json").open("r") as fio:
@@ -59,7 +63,7 @@ def main(
     batch_size = 2 ** 10
     num_batches = math.ceil(seq_splits.size(0) / batch_size)
 
-    sequence_embeds = []
+    embeddings = []
 
     with torch.no_grad():
         for ibatch in tqdm(range(num_batches)):
@@ -83,10 +87,25 @@ def main(
             # take the mean of the token outputs up to and including EOS
             out = torch.sum(out, dim=0) / torch.sum(batch_mask, dim=0)[:, None]
 
-            sequence_embeds += out.tolist()
+            embeddings += out.tolist()
+
+    embeddings = np.array(embeddings, dtype=np.float32)
+
+    # Calculate PCA and reduce dimensions. In high dimensional spaces, the
+    # distance between two points becomes confined to a thin shell around the
+    # origin. The more dimensions, the more likely, by chance, two unrleated
+    # points have some very similar coordinates along one axis. Effectively this
+    # is like noise, reducing the separation power.
+    num_dims = math.ceil(embeddings.shape[1] * dim_reduction)
+    bias, basis = clustering.calculate_pca(embeddings, num_dims)
+    # NOTE: the vector space is effectively a log-probability space for tokens,
+    # so the relevant quantities are differencnes. The origin of the space
+    # *should* be arbitrary, and cosine distances don't make much sense if it
+    # is not centered on the data.
+    embeddings = np.dot(embeddings + bias, basis)
 
     with path_embeddings.open("wb") as fio:
-        np.save(fio, sequence_embeds)
+        np.save(fio, embeddings)
 
 
 if __name__ == "__main__":
@@ -97,5 +116,6 @@ if __name__ == "__main__":
     parser.add_argument("path_tokenizer", type=Path)
     parser.add_argument("dir_model", type=Path)
     parser.add_argument("path_embeddings", type=Path)
+    parser.add_argument("--dim_reduction", type=float, default=0.5)
 
     main(**vars(parser.parse_args()))

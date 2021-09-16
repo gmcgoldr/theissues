@@ -88,12 +88,6 @@ def main(
 
     logging.info("Evaluating clusters ...")
 
-    # NOTE: the vector space is effectively a log-probability space for tokens,
-    # so the relevant quantities are differencnes. The origin of the space
-    # *should* be arbitrary, and cosine distances don't make much sense if it
-    # is not centered on the data.
-    embeddings = embeddings - np.mean(embeddings, axis=0)[np.newaxis, :]
-
     rng: np.random.Generator = np.random.default_rng()
 
     # NOTE: relying on dict insertion order
