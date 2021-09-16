@@ -69,7 +69,7 @@ def main(
     ).numpy()
 
     with path_embeddings.open("rb") as fio:
-        embeddings = np.load(fio)
+        embeddings: np.ndarray = np.load(fio)
 
     num_statements = len(statements)
     if sequence_splits.shape[0] != num_statements:
@@ -94,7 +94,7 @@ def main(
     # is not centered on the data.
     embeddings = embeddings - np.mean(embeddings, axis=0)[np.newaxis, :]
 
-    rng = np.random.default_rng()
+    rng: np.random.Generator = np.random.default_rng()
 
     # NOTE: relying on dict insertion order
     pairs_intra = clustering.build_intra_topic_pairs(
@@ -139,6 +139,22 @@ def main(
     logging.info("Intra distance: %.2e ± %.2e", intra_mu, intra_sig)
     logging.info("Inter distance: %.2e ± %.2e", inter_mu, inter_sig)
     logging.info("Separation: %+.2e", separation)
+
+    logging.info("Cosine neighbours:")
+    # want to re-use the same examples everytime this is run
+    rng: np.random.Generator = np.random.default_rng(123)
+
+    for topic, group in topic_groups.items():
+        if not group:
+            continue
+        ref_idx = rng.choice(group)
+        ref_embedding = embeddings[ref_idx]
+        distances = distances_cosine(ref_embedding[np.newaxis, :], embeddings)
+        sort_idx = np.argsort(distances)
+        logging.info("Topic %s", topic)
+        for idx in sort_idx[:3]:
+            logging.info("> %s", statements[idx].text)
+
 
 
 if __name__ == "__main__":
