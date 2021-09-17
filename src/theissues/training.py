@@ -5,6 +5,7 @@ import numpy as np
 import tokenizers as tk
 import torch
 
+from . import utils
 from .model import TransformerModel
 from .utils import SpecialTokens
 
@@ -362,7 +363,6 @@ def generate_seq(
             if token_idx == ctx.special_tokens.eos_id:
                 break
 
-    if token_ids:
-        return ctx.tokenizer.decode(token_ids, skip_special_tokens=False)
-    else:
-        return ""
+    return utils.decode_token_ids(
+        token_ids, utils.get_id_to_token(ctx.tokenizer.get_vocab())
+    )

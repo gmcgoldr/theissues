@@ -120,22 +120,27 @@ def main(
             tk.normalizers.Strip(),
             # don't allow multiple spaces between tokens
             tk.normalizers.Replace(tk.Regex(r"\s+"), " "),
+            # don't clash with sub-token prefix, allow only single #
+            tk.normalizers.Replace(tk.Regex(r"##+"), "#"),
+            # clean braces
+            tk.normalizers.Replace("[", "("),
+            tk.normalizers.Replace("]", ")"),
         ]
         if lower_case:
             normalizers.append(tk.normalizers.Lowercase())
         tokenizer.normalizer = tk.normalizers.Sequence(normalizers)
 
-        if split_lines:
-            tokenizer.pre_tokenizer = tk.pre_tokenizers.Sequence(
-                [
-                    tk.pre_tokenizers.Split(pattern="\n", behavior="removed"),
-                    tk.pre_tokenizers.Split(
-                        pattern=tk.Regex("[.,]"), behavior="merged_with_previous"
-                    ),
-                ]
-            )
-        else:
-            tokenizer.pre_tokenizer = tk.pre_tokenizers.Whitespace()
+        pre_tokenizers = [
+            # new lines separate records, ignore in model
+            tk.pre_tokenizers.Split("\n", "removed"),
+            # split on separators but preserve in the token for cleaner
+            # reconstruction and to differentiate tokens at the end of a
+            # phrase versus used in the middle of a phrase
+            tk.pre_tokenizers.Split(tk.Regex(r"[ ,.-]"), "merged_with_previous"),
+            # keep () as separte tokens
+            tk.pre_tokenizers.Split(tk.Regex(r"[()]"), "isolated"),
+        ]
+        tokenizer.pre_tokenizer = tk.pre_tokenizers.Sequence(pre_tokenizers)
 
         tokenizer.train([fio.name], trainer)
         tokenizer.save(str(path_tokenizer), pretty=True)

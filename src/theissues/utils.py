@@ -1,5 +1,5 @@
 import ctypes
-from typing import Iterable, Mapping, NamedTuple, Tuple
+from typing import Dict, Iterable, NamedTuple, Tuple
 
 import tokenizers as tk
 
@@ -13,7 +13,7 @@ TokenId = ctypes.c_int64
 
 Sequence = Iterable[TokenId]
 
-Vocab = Mapping[str, TokenId]
+Vocab = Dict[str, TokenId]
 
 
 class SpecialTokens:
@@ -59,3 +59,30 @@ def prepare_statement_encoding(statement: Statement) -> str:
         f"{statement.text} "
         f"{SpecialTokens.eos}"
     )
+
+
+def get_id_to_token(vocab: Vocab) -> Dict[TokenId, str]:
+    return {i: t for t, i in vocab.items()}
+
+
+def decode_token_ids(token_ids: Iterable[int], id_to_token: Dict[TokenId, str]) -> str:
+    """
+    Dedoce a sequence of token ids into its string representation.
+
+    The `Tokenizer`'s `decode` method inserts spaces between tokens and shows
+    the `##` sub-word token prefix. This fixes these issues.
+
+    NOTE: if the pre-tokenizer removes whitespace, then this would need to add
+    spaces between tokens. But the pre-tokenizer in this code-base is configured
+    to not remove any characters such that the text can be fully reconstructed.
+
+    Args:
+        token_ids: the ids to decode
+        id_to_token: mapping of token ids to the string token
+
+    Returns:
+        the decoded text
+    """
+    tokens = [id_to_token[i] for i in token_ids]
+    tokens = [t[2:] if t[:2] == "##" else t for t in tokens]
+    return "".join(tokens)

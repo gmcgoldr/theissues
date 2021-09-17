@@ -12,12 +12,10 @@ beggining of a string and `[eos]` is the end of a string.
 
 import itertools
 import json
-import warnings
 from pathlib import Path
 
 import numpy as np
 import tokenizers as tk
-from typing_extensions import Concatenate
 
 from theissues import utils
 
@@ -50,7 +48,11 @@ def main(
     with path_sequences.open("wb") as fio:
         np.save(fio, chained)
     print(chained[:32])
-    print(tokenizer.decode(chained[:32], skip_special_tokens=False))
+    print(
+        utils.decode_token_ids(
+            chained[:32], utils.get_id_to_token(tokenizer.get_vocab())
+        )
+    )
 
 
 if __name__ == "__main__":
