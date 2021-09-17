@@ -155,7 +155,7 @@ if __name__ == "__main__":
     parser.add_argument("path_hansards", type=Path)
     parser.add_argument("path_statements", type=Path)
     parser.add_argument("path_tokenizer", type=Path)
-    parser.add_argument("--vocab_size", type=int, default=2 ** 14)
+    parser.add_argument("--vocab_size", type=int, default=2 ** 15)
     parser.add_argument("--min_chars", type=int, default=64)
     parser.add_argument("--split_lines", action="store_true")
     parser.add_argument("--lower_case", action="store_true")
